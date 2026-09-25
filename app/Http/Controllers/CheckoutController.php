@@ -28,7 +28,8 @@ class CheckoutController extends Controller
         $httpStatus = $injectFault ? 503 : 201;
 
         // Record replay evidence when a run_id is provided.
-        if ($request->filled('run_id')) {
+        // Restricted to local/testing environments only.
+        if (app()->environment('local', 'testing') && $request->filled('run_id')) {
             $attemptId = $request->input('attempt_id') ?: (string) Str::uuid();
 
             ReplayAttempt::create([
