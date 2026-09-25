@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Responses\SimulatedPersistenceFault;
 use App\Models\ReplayAttempt;
 use App\Models\Reservation;
 use Illuminate\Http\JsonResponse;
@@ -47,7 +48,7 @@ class ReservationController extends Controller
         }
 
         if ($injectFault) {
-            abort(503, 'Simulated server fault after persistence');
+            return SimulatedPersistenceFault::json();
         }
 
         return response()->json(['reservation_id' => $reservation->id, 'status' => $reservation->status], 201);

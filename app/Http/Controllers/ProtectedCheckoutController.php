@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Responses\SimulatedPersistenceFault;
 use App\Models\Order;
 use App\Models\ReplayAttempt;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -103,7 +104,7 @@ class ProtectedCheckoutController extends Controller
         }
 
         if ($injectFault) {
-            abort(503, 'Simulated server fault after persistence');
+            return SimulatedPersistenceFault::json();
         }
 
         return response()->json(['order_id' => $order->id, 'status' => $order->status], 201);
