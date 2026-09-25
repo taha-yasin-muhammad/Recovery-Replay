@@ -58,14 +58,15 @@ class ReplayRunCommand extends Command
         $report = $runner->run();
 
         if ($this->option('json')) {
-            $this->line(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            // Output clean JSON with no surrounding terminal formatting.
+            $this->output->writeln(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-            return self::SUCCESS;
+            return $report['operation_safe'] ? self::SUCCESS : self::FAILURE;
         }
 
         $this->renderReport($report);
 
-        return $report['passed'] ? self::SUCCESS : self::FAILURE;
+        return $report['operation_safe'] ? self::SUCCESS : self::FAILURE;
     }
 
     /**
@@ -92,12 +93,16 @@ class ReplayRunCommand extends Command
         $this->line(" <fg=cyan>Distinct order IDs:</> {$orderIds}");
         $this->line(' <fg=cyan>Duplicate orders:</> '.($report['duplicate_orders'] ? 'yes' : 'no'));
         $this->line(' <fg=cyan>Same order on retry:</> '.($report['same_order_on_retry'] ? 'yes' : 'no'));
+        $this->line(' <fg=cyan>Reproduction succeeded:</> '.($report['reproduction_succeeded'] ? 'yes' : 'no'));
+        $this->line(' <fg=cyan>Operation safe:</> '.($report['operation_safe'] ? 'yes' : 'no'));
         $this->newLine();
 
-        if ($report['passed']) {
+        if ($report['operation_safe']) {
             $this->line(" <fg=green>✓ {$report['verdict']}</>");
-        } else {
+        } elseif ($report['reproduction_succeeded']) {
             $this->line(" <fg=yellow>⚠ {$report['verdict']}</>");
+        } else {
+            $this->line(" <fg=red>✗ {$report['verdict']}</>");
         }
 
         $this->newLine();

@@ -4,10 +4,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-// Evidence recording is restricted to local/testing environments.
-// In production the run_id payload is silently ignored.
+// All checkout and replay endpoints are restricted to local/testing environments.
+// In production these routes are not registered at all.
 
-test('evidence is not recorded when environment is production', function () {
+test('checkout endpoint is forbidden in production', function () {
     $this->app->detectEnvironment(fn () => 'production');
 
     $response = $this->postJson('/api/checkout', [
@@ -16,8 +16,8 @@ test('evidence is not recorded when environment is production', function () {
         'attempt_id' => 'attempt-prod-1',
     ]);
 
-    // Checkout still succeeds.
-    $response->assertStatus(201);
+    // Demo endpoint is forbidden in production.
+    $response->assertStatus(403);
 
     // No replay evidence was recorded.
     $this->assertDatabaseCount('replay_attempts', 0);

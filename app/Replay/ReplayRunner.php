@@ -20,7 +20,8 @@ use Illuminate\Support\Str;
  *     order_ids: list<int>,
  *     duplicate_orders: bool,
  *     same_order_on_retry: bool,
- *     passed: bool,
+ *     reproduction_succeeded: bool,
+ *     operation_safe: bool,
  *     verdict: string,
  * }
  */
@@ -60,24 +61,41 @@ class ReplayRunner
             ->orderBy('attempted_at')
             ->get();
 
+        // Missing evidence — cannot evaluate any outcome.
+        if ($attempts->isEmpty()) {
+            return [
+                'run_id' => $runId,
+                'scenario' => $this->scenario->label(),
+                'attempts' => [],
+                'order_ids' => [],
+                'duplicate_orders' => false,
+                'same_order_on_retry' => false,
+                'reproduction_succeeded' => false,
+                'operation_safe' => false,
+                'verdict' => 'INCONCLUSIVE — no evidence recorded for this run',
+            ];
+        }
+
         $orderIds = $attempts->pluck('order_id')->unique()->sort()->values()->all();
         $duplicateOrders = count($orderIds) > 1;
         $sameOrderOnRetry = count($orderIds) === 1;
 
-        // The scenario passes when both attempts reference the same order
-        // (idempotency held) OR when the first attempt faulted but no duplicate
-        // was created on retry — i.e. the protected mode.
-        // The vulnerable mode intentionally produces duplicates; its "expected"
-        // behaviour is: first 503 + second 201 + two distinct orders.
         $firstStatus = $first['http_status'];
         $secondStatus = $second['http_status'];
 
-        $passed = $firstStatus === 503 && $secondStatus === 201 && $duplicateOrders
-            || $firstStatus === 503 && in_array($secondStatus, [200, 201], strict: true) && $sameOrderOnRetry;
+        // reproduction_succeeded: the two-attempt sequence played out as the
+        // scenario was designed to demonstrate (503 on first, success on second).
+        $reproductionSucceeded = $firstStatus === 503
+            && in_array($secondStatus, [200, 201], strict: true);
+
+        // operation_safe: the business operation is safe — a retry after a 503
+        // did not produce a duplicate. True only when idempotency held.
+        $operationSafe = $reproductionSucceeded && $sameOrderOnRetry;
 
         $verdict = match (true) {
-            $sameOrderOnRetry => 'PASS — retry returned the same order (idempotency held)',
-            $duplicateOrders => 'EXPECTED — duplicate orders created (no idempotency protection)',
+            ! $reproductionSucceeded => 'INCONCLUSIVE — unexpected HTTP sequence ('.$firstStatus.' / '.$secondStatus.')',
+            $operationSafe => 'PASS — retry returned the same order (idempotency held)',
+            $duplicateOrders => 'EXPECTED FAILURE — duplicate orders created (no idempotency protection)',
             default => 'INCONCLUSIVE — unexpected outcome',
         };
 
@@ -94,7 +112,8 @@ class ReplayRunner
             'order_ids' => $orderIds,
             'duplicate_orders' => $duplicateOrders,
             'same_order_on_retry' => $sameOrderOnRetry,
-            'passed' => $passed,
+            'reproduction_succeeded' => $reproductionSucceeded,
+            'operation_safe' => $operationSafe,
             'verdict' => $verdict,
         ];
     }

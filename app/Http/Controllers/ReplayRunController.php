@@ -10,6 +10,8 @@ class ReplayRunController extends Controller
 {
     public function show(string $runId): JsonResponse
     {
+        abort_unless(app()->environment('local', 'testing'), 403);
+
         $attempts = ReplayAttempt::where('run_id', $runId)
             ->orderBy('attempted_at')
             ->get();

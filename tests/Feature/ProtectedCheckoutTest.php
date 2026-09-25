@@ -156,3 +156,81 @@ test('protected attempt records replay evidence for both attempts under the same
     expect($attempts[0]->order_count_after)->toBe(1);
     expect($attempts[1]->order_count_after)->toBe(1);
 });
+
+// Idempotency key conflict: same key, different operation_id
+
+test('reusing an idempotency key for a different operation_id returns 409', function () {
+    // First request establishes the key against operation A.
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-original',
+        'idempotency_key' => 'idem-shared-key',
+    ])->assertStatus(201);
+
+    // Second request reuses the same key for a completely different operation.
+    $response = $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-different',
+        'idempotency_key' => 'idem-shared-key',
+    ]);
+
+    $response->assertStatus(409)
+        ->assertJsonFragment(['message' => 'This idempotency key was used for a different operation.']);
+
+    // No second order was created.
+    $this->assertDatabaseCount('orders', 1);
+});
+
+test('legitimate retry with matching operation_id still returns 200', function () {
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-retry',
+        'idempotency_key' => 'idem-retry-key',
+        'inject_fault' => true,
+    ])->assertStatus(503);
+
+    // Retry with the same operation_id — must succeed idempotently.
+    $retry = $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-retry',
+        'idempotency_key' => 'idem-retry-key',
+    ]);
+
+    $retry->assertStatus(200);
+    $this->assertDatabaseCount('orders', 1);
+});
+
+test('409 response does not record replay evidence', function () {
+    $runId = 'run-conflict-evidence';
+
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-original-ev',
+        'idempotency_key' => 'idem-conflict-ev',
+        'run_id' => $runId,
+        'attempt_id' => 'attempt-1',
+    ])->assertStatus(201);
+
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-conflicting-ev',
+        'idempotency_key' => 'idem-conflict-ev',
+        'run_id' => $runId,
+        'attempt_id' => 'attempt-2',
+    ])->assertStatus(409);
+
+    // Only the first (successful) attempt was recorded.
+    $this->assertDatabaseCount('replay_attempts', 1);
+    $this->assertDatabaseHas('replay_attempts', ['attempt_id' => 'attempt-1']);
+    $this->assertDatabaseMissing('replay_attempts', ['attempt_id' => 'attempt-2']);
+});
+
+test('409 does not create a second order', function () {
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-a',
+        'idempotency_key' => 'idem-once',
+    ])->assertStatus(201);
+
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-b',
+        'idempotency_key' => 'idem-once',
+    ])->assertStatus(409);
+
+    $this->assertDatabaseCount('orders', 1);
+    $this->assertDatabaseHas('orders', ['operation_id' => 'op-a']);
+    $this->assertDatabaseMissing('orders', ['operation_id' => 'op-b']);
+});

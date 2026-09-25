@@ -13,6 +13,8 @@ class ProtectedCheckoutController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
+        abort_unless(app()->environment('local', 'testing'), 403);
+
         $request->validate([
             'operation_id' => ['required', 'string'],
             'idempotency_key' => ['required', 'string'],
@@ -26,6 +28,14 @@ class ProtectedCheckoutController extends Controller
         $existing = Order::where('idempotency_key', $idempotencyKey)->first();
 
         if ($existing !== null) {
+            // The idempotency key is bound to the original operation_id.
+            // Reusing the same key for a different operation is a conflict.
+            if ($existing->operation_id !== $operationId) {
+                return response()->json([
+                    'message' => 'This idempotency key was used for a different operation.',
+                ], 409);
+            }
+
             $httpStatus = 200;
 
             if (app()->environment('local', 'testing') && $request->filled('run_id')) {
@@ -54,8 +64,15 @@ class ProtectedCheckoutController extends Controller
             ]);
         } catch (UniqueConstraintViolationException) {
             // A concurrent request already created the order between our lookup
-            // and our insert. Fetch and return it idempotently.
+            // and our insert. Fetch and return it idempotently, but only if the
+            // operation_id matches — a conflicting concurrent request is a 409.
             $order = Order::where('idempotency_key', $idempotencyKey)->firstOrFail();
+
+            if ($order->operation_id !== $operationId) {
+                return response()->json([
+                    'message' => 'This idempotency key was used for a different operation.',
+                ], 409);
+            }
 
             return response()->json(['order_id' => $order->id, 'status' => $order->status], 200);
         }

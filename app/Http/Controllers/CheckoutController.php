@@ -12,6 +12,8 @@ class CheckoutController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
+        abort_unless(app()->environment('local', 'testing'), 403);
+
         $request->validate([
             'operation_id' => ['required', 'string'],
         ]);
