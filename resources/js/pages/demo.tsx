@@ -61,7 +61,50 @@ function StatusBadge({ status }: { status: number }) {
     return <span className={`${base} ${colour}`}>{status}</span>;
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * POST to a checkout endpoint. Returns the Response (does not throw on 503,
+ * which is an expected part of the scenario). Throws for unexpected errors.
+ */
+async function postCheckout(
+    url: string,
+    body: Record<string, unknown>,
+): Promise<Response> {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    // 503 is expected (injected fault). Any other non-2xx outside 503 is a
+    // genuine problem we should surface rather than swallow.
+    if (!res.ok && res.status !== 503) {
+        let detail = '';
+        try {
+            detail = await res.text();
+        } catch {
+            // ignore
+        }
+        throw new Error(
+            `Unexpected HTTP ${res.status} from ${url}${detail ? ': ' + detail.slice(0, 200) : ''}`,
+        );
+    }
+    return res;
+}
+
+async function fetchEvidence(runId: string): Promise<RunData> {
+    const res = await fetch(`/api/replay-runs/${runId}`);
+    if (!res.ok) {
+        throw new Error(
+            `Evidence fetch failed with status ${res.status}`,
+        );
+    }
+    return res.json() as Promise<RunData>;
+}
+
+// ── Scenario runners ──────────────────────────────────────────────────────────
+
+type ScenarioKind = 'vulnerable' | 'protected';
 
 type ScenarioState =
     | { phase: 'idle' }
@@ -69,157 +112,226 @@ type ScenarioState =
     | { phase: 'done'; data: RunData }
     | { phase: 'error'; message: string };
 
-export default function Demo() {
-    const [state, setState] = useState<ScenarioState>({ phase: 'idle' });
+async function runVulnerableScenario(
+    onStep: (step: string) => void,
+): Promise<RunData> {
+    const runId = uuid();
+    const operationId = uuid();
 
-    const runScenario = useCallback(async () => {
-        const runId = uuid();
-        const operationId = uuid();
+    onStep('Attempt 1 — injecting fault…');
 
-        setState({ phase: 'running', step: 'Attempt 1 — injecting fault…' });
+    await postCheckout('/api/checkout', {
+        operation_id: operationId,
+        run_id: runId,
+        attempt_id: uuid(),
+        inject_fault: true,
+    });
+    // Expected 503 — we consumed it above without throwing.
 
-        try {
-            // ── Attempt 1: inject fault ───────────────────────────────────
-            const attempt1 = await fetch('/api/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    operation_id: operationId,
-                    run_id: runId,
-                    attempt_id: uuid(),
-                    inject_fault: true,
-                }),
-            });
+    onStep('Attempt 2 — retrying without fault…');
 
-            // We expect 503 — anything else is unexpected but we continue.
-            if (attempt1.status !== 503) {
-                console.warn(
-                    `Expected 503 but got ${attempt1.status} on attempt 1`,
-                );
-            }
+    const attempt2 = await postCheckout('/api/checkout', {
+        operation_id: operationId,
+        run_id: runId,
+        attempt_id: uuid(),
+        inject_fault: false,
+    });
 
-            setState({
-                phase: 'running',
-                step: 'Attempt 2 — retrying without fault…',
-            });
+    if (!attempt2.ok) {
+        throw new Error(`Retry attempt failed with status ${attempt2.status}`);
+    }
 
-            // ── Attempt 2: retry, no fault ────────────────────────────────
-            const attempt2 = await fetch('/api/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    operation_id: operationId,
-                    run_id: runId,
-                    attempt_id: uuid(),
-                    inject_fault: false,
-                }),
-            });
+    onStep('Fetching replay evidence…');
+    return fetchEvidence(runId);
+}
 
-            if (!attempt2.ok) {
-                throw new Error(
-                    `Attempt 2 failed with status ${attempt2.status}`,
-                );
-            }
+async function runProtectedScenario(
+    onStep: (step: string) => void,
+): Promise<RunData> {
+    const runId = uuid();
+    const operationId = uuid();
+    const idempotencyKey = uuid();
 
-            setState({ phase: 'running', step: 'Fetching replay evidence…' });
+    onStep('Attempt 1 — injecting fault…');
 
-            // ── Fetch evidence ────────────────────────────────────────────
-            const evidenceRes = await fetch(`/api/replay-runs/${runId}`);
+    await postCheckout('/api/checkout/protected', {
+        operation_id: operationId,
+        idempotency_key: idempotencyKey,
+        run_id: runId,
+        attempt_id: uuid(),
+        inject_fault: true,
+    });
+    // Expected 503.
 
-            if (!evidenceRes.ok) {
-                throw new Error(
-                    `Evidence fetch failed with status ${evidenceRes.status}`,
-                );
-            }
+    onStep('Attempt 2 — retrying with same idempotency key…');
 
-            const data: RunData = await evidenceRes.json();
+    const attempt2 = await postCheckout('/api/checkout/protected', {
+        operation_id: operationId,
+        idempotency_key: idempotencyKey,
+        run_id: runId,
+        attempt_id: uuid(),
+        inject_fault: false,
+    });
 
-            setState({ phase: 'done', data });
-        } catch (err) {
-            setState({
-                phase: 'error',
-                message: err instanceof Error ? err.message : String(err),
-            });
-        }
-    }, []);
+    if (!attempt2.ok) {
+        throw new Error(`Retry attempt failed with status ${attempt2.status}`);
+    }
+
+    onStep('Fetching replay evidence…');
+    return fetchEvidence(runId);
+}
+
+// ── Scenario panel ────────────────────────────────────────────────────────────
+
+interface ScenarioPanelProps {
+    kind: ScenarioKind;
+    state: ScenarioState;
+    onRun: () => void;
+}
+
+function ScenarioPanel({ kind, state, onRun }: ScenarioPanelProps) {
+    const isVulnerable = kind === 'vulnerable';
+    const label = isVulnerable ? 'Run Vulnerable Scenario' : 'Run Protected Scenario';
+    const headerBg = isVulnerable ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
+    const headerText = isVulnerable ? 'text-red-800' : 'text-green-800';
+    const badgeColour = isVulnerable
+        ? 'bg-red-100 text-red-700'
+        : 'bg-green-100 text-green-700';
+    const badgeLabel = isVulnerable ? 'BEFORE — No Idempotency' : 'AFTER — Idempotency Protected';
+    const buttonColour = isVulnerable
+        ? 'bg-red-700 hover:bg-red-600'
+        : 'bg-green-700 hover:bg-green-600';
 
     return (
-        <>
-            <Head title="Replay Timeline Demo" />
-
-            <div className="min-h-screen bg-gray-50 p-6">
-                <div className="mx-auto max-w-3xl">
-                    {/* Header */}
-                    <div className="mb-6">
-                        <h1 className="text-xl font-semibold text-gray-900">
-                            Recovery Replay — Timeline Demo
-                        </h1>
-                        <p className="mt-1 text-sm text-gray-500">
-                            Demonstrates the duplicate-order bug that occurs
-                            when a checkout request fails after the order is
-                            already persisted and the customer retries.
-                        </p>
-                    </div>
-
-                    {/* Run button */}
-                    <button
-                        onClick={runScenario}
-                        disabled={state.phase === 'running'}
-                        className="mb-6 rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                    >
-                        {state.phase === 'running'
-                            ? 'Running…'
-                            : 'Run Failure Scenario'}
-                    </button>
-
-                    {/* Loading */}
-                    {state.phase === 'running' && (
-                        <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-gray-800" />
-                            {state.step}
-                        </div>
-                    )}
-
-                    {/* Error */}
-                    {state.phase === 'error' && (
-                        <div className="mb-4 rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-                            <strong>Error:</strong> {state.message}
-                        </div>
-                    )}
-
-                    {/* Results */}
-                    {state.phase === 'done' && <Results data={state.data} />}
+        <div className="flex flex-col gap-4">
+            {/* Panel header */}
+            <div className={`rounded border px-4 py-3 ${headerBg}`}>
+                <div className="flex items-center justify-between">
+                    <span className={`text-xs font-semibold uppercase tracking-wide ${headerText}`}>
+                        {isVulnerable ? '❌ Vulnerable checkout' : '✅ Protected checkout'}
+                    </span>
+                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${badgeColour}`}>
+                        {badgeLabel}
+                    </span>
                 </div>
+                <p className="mt-1 text-xs text-gray-600">
+                    {isVulnerable
+                        ? 'POST /api/checkout — no idempotency key. A retry after a 503 creates a duplicate order.'
+                        : 'POST /api/checkout/protected — idempotency key prevents duplicate orders on retry.'}
+                </p>
             </div>
-        </>
+
+            {/* Run button */}
+            <button
+                onClick={onRun}
+                disabled={state.phase === 'running'}
+                className={`self-start rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${buttonColour}`}
+            >
+                {state.phase === 'running' ? 'Running…' : label}
+            </button>
+
+            {/* Loading */}
+            {state.phase === 'running' && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-gray-800" />
+                    {state.step}
+                </div>
+            )}
+
+            {/* Error */}
+            {state.phase === 'error' && (
+                <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <strong>Error:</strong> {state.message}
+                </div>
+            )}
+
+            {/* Results */}
+            {state.phase === 'done' && (
+                <ScenarioResults kind={kind} data={state.data} />
+            )}
+        </div>
     );
 }
 
-// ── Results component ─────────────────────────────────────────────────────────
+// ── Scenario results ──────────────────────────────────────────────────────────
 
-function Results({ data }: { data: RunData }) {
+function ScenarioResults({ kind, data }: { kind: ScenarioKind; data: RunData }) {
+    const isVulnerable = kind === 'vulnerable';
+    const uniqueOrderIds = [...new Set(data.attempts.map((a) => a.order_id))];
+    const isDuplicate = uniqueOrderIds.length > 1;
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {/* Run meta */}
-            <div className="rounded border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
+            <div className="rounded border border-gray-200 bg-white px-4 py-2 text-xs text-gray-500">
                 <span className="font-medium text-gray-700">Run ID: </span>
                 <span className="font-mono">{data.run_id}</span>
             </div>
 
-            {/* Two-column perspectives */}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* Outcome summary */}
+            {isVulnerable ? (
+                isDuplicate ? (
+                    <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <strong>Duplicate detected:</strong> {data.orders.length} orders
+                        were created for the same operation — this is the bug idempotency keys fix.
+                    </div>
+                ) : (
+                    <div className="rounded border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                        Scenario complete. Check the orders below.
+                    </div>
+                )
+            ) : (
+                !isDuplicate ? (
+                    <div className="rounded border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+                        <strong>No duplicate:</strong> Both attempts reference the same order (#{uniqueOrderIds[0]}).
+                        Idempotency prevented a double-charge.
+                    </div>
+                ) : (
+                    <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        Unexpected: {data.orders.length} orders found for the protected scenario.
+                    </div>
+                )
+            )}
+
+            {/* Two-column evidence */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <CustomerView attempts={data.attempts} />
                 <ServerView orders={data.orders} attempts={data.attempts} />
             </div>
 
-            {/* Duplicate warning */}
-            {data.orders.length > 1 && (
-                <div className="rounded border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-                    <strong>Duplicate detected:</strong> {data.orders.length}{' '}
-                    orders were created for the same operation — this is the bug
-                    that idempotency keys will fix.
-                </div>
-            )}
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-2 text-center">
+                <StatBox label="Orders created" value={String(data.orders.length)} highlight={data.orders.length > 1 ? 'bad' : 'good'} />
+                <StatBox label="Attempts" value={String(data.attempts.length)} highlight="neutral" />
+                <StatBox
+                    label="Duplicate"
+                    value={isDuplicate ? 'YES' : 'NO'}
+                    highlight={isDuplicate ? 'bad' : 'good'}
+                />
+            </div>
+        </div>
+    );
+}
+
+function StatBox({
+    label,
+    value,
+    highlight,
+}: {
+    label: string;
+    value: string;
+    highlight: 'good' | 'bad' | 'neutral';
+}) {
+    const colour =
+        highlight === 'good'
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : highlight === 'bad'
+              ? 'bg-red-50 border-red-200 text-red-800'
+              : 'bg-gray-50 border-gray-200 text-gray-700';
+    return (
+        <div className={`rounded border px-3 py-2 ${colour}`}>
+            <div className="text-lg font-bold">{value}</div>
+            <div className="text-xs opacity-75">{label}</div>
         </div>
     );
 }
@@ -281,7 +393,6 @@ function ServerView({
     orders: Order[];
     attempts: ReplayAttempt[];
 }) {
-    // Build a map from order_id → attempt for the timeline column
     const attemptByOrder = new Map(attempts.map((a) => [a.order_id, a]));
 
     return (
@@ -337,5 +448,83 @@ function ServerView({
                 </table>
             </div>
         </section>
+    );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function Demo() {
+    const [vulnerableState, setVulnerableState] = useState<ScenarioState>({
+        phase: 'idle',
+    });
+    const [protectedState, setProtectedState] = useState<ScenarioState>({
+        phase: 'idle',
+    });
+
+    const handleRunVulnerable = useCallback(async () => {
+        setVulnerableState({ phase: 'running', step: 'Starting…' });
+        try {
+            const data = await runVulnerableScenario((step) =>
+                setVulnerableState({ phase: 'running', step }),
+            );
+            setVulnerableState({ phase: 'done', data });
+        } catch (err) {
+            setVulnerableState({
+                phase: 'error',
+                message: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }, []);
+
+    const handleRunProtected = useCallback(async () => {
+        setProtectedState({ phase: 'running', step: 'Starting…' });
+        try {
+            const data = await runProtectedScenario((step) =>
+                setProtectedState({ phase: 'running', step }),
+            );
+            setProtectedState({ phase: 'done', data });
+        } catch (err) {
+            setProtectedState({
+                phase: 'error',
+                message: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }, []);
+
+    return (
+        <>
+            <Head title="Replay Timeline Demo" />
+
+            <div className="min-h-screen bg-gray-50 p-6">
+                <div className="mx-auto max-w-5xl">
+                    {/* Header */}
+                    <div className="mb-6">
+                        <h1 className="text-xl font-semibold text-gray-900">
+                            Recovery Replay — Before / After Comparison
+                        </h1>
+                        <p className="mt-1 text-sm text-gray-500">
+                            Run both scenarios to compare the vulnerable checkout
+                            (duplicate orders) against the idempotency-protected
+                            checkout (single order on retry). All results come
+                            from live API calls and real database records.
+                        </p>
+                    </div>
+
+                    {/* Side-by-side panels */}
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <ScenarioPanel
+                            kind="vulnerable"
+                            state={vulnerableState}
+                            onRun={handleRunVulnerable}
+                        />
+                        <ScenarioPanel
+                            kind="protected"
+                            state={protectedState}
+                            onRun={handleRunProtected}
+                        />
+                    </div>
+                </div>
+            </div>
+        </>
     );
 }
