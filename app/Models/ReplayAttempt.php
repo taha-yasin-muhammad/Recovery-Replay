@@ -13,6 +13,8 @@ class ReplayAttempt extends Model
         'attempt_id',
         'operation_id',
         'order_id',
+        'resource_type',
+        'resource_id',
         'http_status',
         'order_count_after',
         'attempted_at',

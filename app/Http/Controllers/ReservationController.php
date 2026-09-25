@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
 use App\Models\ReplayAttempt;
+use App\Models\Reservation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
-class CheckoutController extends Controller
+class ReservationController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
@@ -18,13 +18,13 @@ class CheckoutController extends Controller
             'operation_id' => ['required', 'string'],
         ]);
 
-        $order = Order::create([
+        $reservation = Reservation::create([
             'operation_id' => $request->input('operation_id'),
             'status' => 'pending',
         ]);
 
         // Deterministic fault injection: simulate a server fault after the
-        // order has been persisted. Enabled only in local/testing environments.
+        // reservation has been persisted. Enabled only in local/testing environments.
         $injectFault = app()->environment('local', 'testing') && $request->boolean('inject_fault');
 
         $httpStatus = $injectFault ? 503 : 201;
@@ -38,11 +38,10 @@ class CheckoutController extends Controller
                 'run_id' => $request->input('run_id'),
                 'attempt_id' => $attemptId,
                 'operation_id' => $request->input('operation_id'),
-                'order_id' => $order->id,
-                'resource_type' => 'order',
-                'resource_id' => $order->id,
+                'resource_type' => 'reservation',
+                'resource_id' => $reservation->id,
                 'http_status' => $httpStatus,
-                'order_count_after' => Order::where('operation_id', $request->input('operation_id'))->count(),
+                'order_count_after' => Reservation::where('operation_id', $request->input('operation_id'))->count(),
                 'attempted_at' => now(),
             ]);
         }
@@ -51,6 +50,6 @@ class CheckoutController extends Controller
             abort(503, 'Simulated server fault after persistence');
         }
 
-        return response()->json(['order_id' => $order->id, 'status' => $order->status], 201);
+        return response()->json(['reservation_id' => $reservation->id, 'status' => $reservation->status], 201);
     }
 }

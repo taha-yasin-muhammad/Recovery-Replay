@@ -11,6 +11,8 @@ namespace App\Replay;
  * @phpstan-type AttemptPayload array{
  *     attempt_id: string,
  *     http_status: int,
+ *     resource_type: string|null,
+ *     resource_id: int|null,
  *     order_id: int|null,
  *     response_body: array<string, mixed>,
  * }

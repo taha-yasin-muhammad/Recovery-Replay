@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
 use App\Models\ReplayAttempt;
+use App\Models\Reservation;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
-class ProtectedCheckoutController extends Controller
+class ProtectedReservationController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
@@ -23,9 +23,9 @@ class ProtectedCheckoutController extends Controller
         $idempotencyKey = $request->input('idempotency_key');
         $operationId = $request->input('operation_id');
 
-        // If an order with this idempotency key already exists, return it
-        // idempotently — no new order is created.
-        $existing = Order::where('idempotency_key', $idempotencyKey)->first();
+        // If a reservation with this idempotency key already exists, return it
+        // idempotently — no new reservation is created.
+        $existing = Reservation::where('idempotency_key', $idempotencyKey)->first();
 
         if ($existing !== null) {
             // The idempotency key is bound to the original operation_id.
@@ -45,42 +45,41 @@ class ProtectedCheckoutController extends Controller
                     'run_id' => $request->input('run_id'),
                     'attempt_id' => $attemptId,
                     'operation_id' => $operationId,
-                    'order_id' => $existing->id,
-                    'resource_type' => 'order',
+                    'resource_type' => 'reservation',
                     'resource_id' => $existing->id,
                     'http_status' => $httpStatus,
-                    'order_count_after' => Order::where('operation_id', $operationId)->count(),
+                    'order_count_after' => Reservation::where('operation_id', $operationId)->count(),
                     'attempted_at' => now(),
                 ]);
             }
 
-            return response()->json(['order_id' => $existing->id, 'status' => $existing->status], 200);
+            return response()->json(['reservation_id' => $existing->id, 'status' => $existing->status], 200);
         }
 
-        // No existing order — create one now.
+        // No existing reservation — create one now.
         try {
-            $order = Order::create([
+            $reservation = Reservation::create([
                 'operation_id' => $operationId,
                 'idempotency_key' => $idempotencyKey,
                 'status' => 'pending',
             ]);
         } catch (UniqueConstraintViolationException) {
-            // A concurrent request already created the order between our lookup
-            // and our insert. Fetch and return it idempotently, but only if the
-            // operation_id matches — a conflicting concurrent request is a 409.
-            $order = Order::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            // A concurrent request already created the reservation between our
+            // lookup and our insert. Fetch and return it idempotently, but only
+            // if the operation_id matches — a conflicting concurrent request is a 409.
+            $reservation = Reservation::where('idempotency_key', $idempotencyKey)->firstOrFail();
 
-            if ($order->operation_id !== $operationId) {
+            if ($reservation->operation_id !== $operationId) {
                 return response()->json([
                     'message' => 'This idempotency key was used for a different operation.',
                 ], 409);
             }
 
-            return response()->json(['order_id' => $order->id, 'status' => $order->status], 200);
+            return response()->json(['reservation_id' => $reservation->id, 'status' => $reservation->status], 200);
         }
 
         // Deterministic fault injection: simulate a server fault after the
-        // order has been persisted. Enabled only in local/testing environments.
+        // reservation has been persisted. Enabled only in local/testing environments.
         $injectFault = app()->environment('local', 'testing') && $request->boolean('inject_fault');
 
         $httpStatus = $injectFault ? 503 : 201;
@@ -92,11 +91,10 @@ class ProtectedCheckoutController extends Controller
                 'run_id' => $request->input('run_id'),
                 'attempt_id' => $attemptId,
                 'operation_id' => $operationId,
-                'order_id' => $order->id,
-                'resource_type' => 'order',
-                'resource_id' => $order->id,
+                'resource_type' => 'reservation',
+                'resource_id' => $reservation->id,
                 'http_status' => $httpStatus,
-                'order_count_after' => Order::where('operation_id', $operationId)->count(),
+                'order_count_after' => Reservation::where('operation_id', $operationId)->count(),
                 'attempted_at' => now(),
             ]);
         }
@@ -105,6 +103,6 @@ class ProtectedCheckoutController extends Controller
             abort(503, 'Simulated server fault after persistence');
         }
 
-        return response()->json(['order_id' => $order->id, 'status' => $order->status], 201);
+        return response()->json(['reservation_id' => $reservation->id, 'status' => $reservation->status], 201);
     }
 }

@@ -4,13 +4,15 @@ namespace App\Console\Commands;
 
 use App\Replay\ReplayRunner;
 use App\Replay\Scenarios\ProtectedCheckoutScenario;
+use App\Replay\Scenarios\ProtectedReservationScenario;
 use App\Replay\Scenarios\VulnerableCheckoutScenario;
+use App\Replay\Scenarios\VulnerableReservationScenario;
 use Illuminate\Console\Command;
 
 class ReplayRunCommand extends Command
 {
     protected $signature = 'replay:run
-                            {scenario : Scenario name (checkout)}
+                            {scenario : Scenario name (checkout|reservation)}
                             {--mode=vulnerable : Execution mode (vulnerable|protected)}
                             {--json : Output a machine-readable JSON report}';
 
@@ -21,6 +23,10 @@ class ReplayRunCommand extends Command
         'checkout' => [
             'vulnerable' => VulnerableCheckoutScenario::class,
             'protected' => ProtectedCheckoutScenario::class,
+        ],
+        'reservation' => [
+            'vulnerable' => VulnerableReservationScenario::class,
+            'protected' => ProtectedReservationScenario::class,
         ],
     ];
 
@@ -80,19 +86,20 @@ class ReplayRunCommand extends Command
         $this->newLine();
 
         $this->table(
-            ['Attempt', 'HTTP Status', 'Order ID', 'Orders after'],
+            ['Attempt', 'HTTP Status', 'Resource Type', 'Resource ID', 'Count after'],
             collect($report['attempts'])->map(fn ($a) => [
                 $a['attempt_id'],
                 $a['http_status'],
-                $a['order_id'],
+                $a['resource_type'] ?? 'order',
+                $a['resource_id'] ?? $a['order_id'],
                 $a['order_count_after'],
             ])->all(),
         );
 
-        $orderIds = implode(', ', $report['order_ids']);
-        $this->line(" <fg=cyan>Distinct order IDs:</> {$orderIds}");
-        $this->line(' <fg=cyan>Duplicate orders:</> '.($report['duplicate_orders'] ? 'yes' : 'no'));
-        $this->line(' <fg=cyan>Same order on retry:</> '.($report['same_order_on_retry'] ? 'yes' : 'no'));
+        $resourceIds = implode(', ', $report['resource_ids']);
+        $this->line(" <fg=cyan>Distinct resource IDs:</> {$resourceIds}");
+        $this->line(' <fg=cyan>Duplicate resources:</> '.($report['duplicate_resources'] ? 'yes' : 'no'));
+        $this->line(' <fg=cyan>Same resource on retry:</> '.($report['same_resource_on_retry'] ? 'yes' : 'no'));
         $this->line(' <fg=cyan>Reproduction succeeded:</> '.($report['reproduction_succeeded'] ? 'yes' : 'no'));
         $this->line(' <fg=cyan>Operation safe:</> '.($report['operation_safe'] ? 'yes' : 'no'));
         $this->newLine();
