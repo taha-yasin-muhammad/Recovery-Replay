@@ -9,6 +9,9 @@ use App\Replay\Scenarios\VulnerableCheckoutScenario;
 use App\Replay\Scenarios\VulnerableReservationScenario;
 use Illuminate\Console\Command;
 
+/**
+ * @phpstan-import-type RunReport from ReplayRunner
+ */
 class ReplayRunCommand extends Command
 {
     protected $signature = 'replay:run
@@ -65,7 +68,15 @@ class ReplayRunCommand extends Command
 
         if ($this->option('json')) {
             // Output clean JSON with no surrounding terminal formatting.
-            $this->output->writeln(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $encoded = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+            if ($encoded === false) {
+                $this->error('Unable to encode the replay report as JSON.');
+
+                return self::FAILURE;
+            }
+
+            $this->output->writeln($encoded);
 
             return $report['operation_safe'] ? self::SUCCESS : self::FAILURE;
         }
@@ -76,7 +87,7 @@ class ReplayRunCommand extends Command
     }
 
     /**
-     * @param  array<string, mixed>  $report
+     * @param  RunReport  $report
      */
     private function renderReport(array $report): void
     {

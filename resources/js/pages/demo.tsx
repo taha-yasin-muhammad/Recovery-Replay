@@ -95,9 +95,7 @@ async function postCheckout(
 async function fetchEvidence(runId: string): Promise<RunData> {
     const res = await fetch(`/api/replay-runs/${runId}`);
     if (!res.ok) {
-        throw new Error(
-            `Evidence fetch failed with status ${res.status}`,
-        );
+        throw new Error(`Evidence fetch failed with status ${res.status}`);
     }
     return res.json() as Promise<RunData>;
 }
@@ -191,13 +189,19 @@ interface ScenarioPanelProps {
 
 function ScenarioPanel({ kind, state, onRun }: ScenarioPanelProps) {
     const isVulnerable = kind === 'vulnerable';
-    const label = isVulnerable ? 'Run Vulnerable Scenario' : 'Run Protected Scenario';
-    const headerBg = isVulnerable ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
+    const label = isVulnerable
+        ? 'Run Vulnerable Scenario'
+        : 'Run Protected Scenario';
+    const headerBg = isVulnerable
+        ? 'bg-red-50 border-red-200'
+        : 'bg-green-50 border-green-200';
     const headerText = isVulnerable ? 'text-red-800' : 'text-green-800';
     const badgeColour = isVulnerable
         ? 'bg-red-100 text-red-700'
         : 'bg-green-100 text-green-700';
-    const badgeLabel = isVulnerable ? 'BEFORE — No Idempotency' : 'AFTER — Idempotency Protected';
+    const badgeLabel = isVulnerable
+        ? 'BEFORE — No Idempotency'
+        : 'AFTER — Idempotency Protected';
     const buttonColour = isVulnerable
         ? 'bg-red-700 hover:bg-red-600'
         : 'bg-green-700 hover:bg-green-600';
@@ -207,10 +211,16 @@ function ScenarioPanel({ kind, state, onRun }: ScenarioPanelProps) {
             {/* Panel header */}
             <div className={`rounded border px-4 py-3 ${headerBg}`}>
                 <div className="flex items-center justify-between">
-                    <span className={`text-xs font-semibold uppercase tracking-wide ${headerText}`}>
-                        {isVulnerable ? '❌ Vulnerable checkout' : '✅ Protected checkout'}
+                    <span
+                        className={`text-xs font-semibold tracking-wide uppercase ${headerText}`}
+                    >
+                        {isVulnerable
+                            ? '❌ Vulnerable checkout'
+                            : '✅ Protected checkout'}
                     </span>
-                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${badgeColour}`}>
+                    <span
+                        className={`rounded px-2 py-0.5 text-xs font-semibold ${badgeColour}`}
+                    >
                         {badgeLabel}
                     </span>
                 </div>
@@ -255,7 +265,13 @@ function ScenarioPanel({ kind, state, onRun }: ScenarioPanelProps) {
 
 // ── Scenario results ──────────────────────────────────────────────────────────
 
-function ScenarioResults({ kind, data }: { kind: ScenarioKind; data: RunData }) {
+function ScenarioResults({
+    kind,
+    data,
+}: {
+    kind: ScenarioKind;
+    data: RunData;
+}) {
     const isVulnerable = kind === 'vulnerable';
     const uniqueOrderIds = [...new Set(data.attempts.map((a) => a.order_id))];
     const isDuplicate = uniqueOrderIds.length > 1;
@@ -272,25 +288,26 @@ function ScenarioResults({ kind, data }: { kind: ScenarioKind; data: RunData }) 
             {isVulnerable ? (
                 isDuplicate ? (
                     <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
-                        <strong>Duplicate detected:</strong> {data.orders.length} orders
-                        were created for the same operation — this is the bug idempotency keys fix.
+                        <strong>Duplicate detected:</strong>{' '}
+                        {data.orders.length} orders were created for the same
+                        operation — this is the bug idempotency keys fix.
                     </div>
                 ) : (
                     <div className="rounded border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-600">
                         Scenario complete. Check the orders below.
                     </div>
                 )
+            ) : !isDuplicate ? (
+                <div className="rounded border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+                    <strong>No duplicate:</strong> Both attempts reference the
+                    same order (#{uniqueOrderIds[0]}). Idempotency prevented a
+                    double-charge.
+                </div>
             ) : (
-                !isDuplicate ? (
-                    <div className="rounded border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
-                        <strong>No duplicate:</strong> Both attempts reference the same order (#{uniqueOrderIds[0]}).
-                        Idempotency prevented a double-charge.
-                    </div>
-                ) : (
-                    <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        Unexpected: {data.orders.length} orders found for the protected scenario.
-                    </div>
-                )
+                <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    Unexpected: {data.orders.length} orders found for the
+                    protected scenario.
+                </div>
             )}
 
             {/* Two-column evidence */}
@@ -301,8 +318,16 @@ function ScenarioResults({ kind, data }: { kind: ScenarioKind; data: RunData }) 
 
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-2 text-center">
-                <StatBox label="Orders created" value={String(data.orders.length)} highlight={data.orders.length > 1 ? 'bad' : 'good'} />
-                <StatBox label="Attempts" value={String(data.attempts.length)} highlight="neutral" />
+                <StatBox
+                    label="Orders created"
+                    value={String(data.orders.length)}
+                    highlight={data.orders.length > 1 ? 'bad' : 'good'}
+                />
+                <StatBox
+                    label="Attempts"
+                    value={String(data.attempts.length)}
+                    highlight="neutral"
+                />
                 <StatBox
                     label="Duplicate"
                     value={isDuplicate ? 'YES' : 'NO'}
@@ -503,10 +528,11 @@ export default function Demo() {
                             Recovery Replay — Before / After Comparison
                         </h1>
                         <p className="mt-1 text-sm text-gray-500">
-                            Run both scenarios to compare the vulnerable checkout
-                            (duplicate orders) against the idempotency-protected
-                            checkout (single order on retry). All results come
-                            from live API calls and real database records.
+                            Run both scenarios to compare the vulnerable
+                            checkout (duplicate orders) against the
+                            idempotency-protected checkout (single order on
+                            retry). All results come from live API calls and
+                            real database records.
                         </p>
                     </div>
 

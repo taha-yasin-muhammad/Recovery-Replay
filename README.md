@@ -104,11 +104,11 @@ in normal usage — it indicates a misconfiguration or an environment problem.
 `true` when `reproduction_succeeded` is `true` **and** both attempts returned
 the same resource ID.
 
-| `reproduction_succeeded` | `operation_safe` | Meaning |
-|--------------------------|------------------|---------|
-| `false` | `false` | Replay did not run correctly — inconclusive |
-| `true` | `false` | Replay ran correctly — **duplicate created** |
-| `true` | `true` | Replay ran correctly — idempotency held ✓ |
+| `reproduction_succeeded` | `operation_safe` | Meaning                                      |
+| ------------------------ | ---------------- | -------------------------------------------- |
+| `false`                  | `false`          | Replay did not run correctly — inconclusive  |
+| `true`                   | `false`          | Replay ran correctly — **duplicate created** |
+| `true`                   | `true`           | Replay ran correctly — idempotency held ✓    |
 
 ### Why the vulnerable scenario exits 1
 
@@ -125,40 +125,40 @@ behaviour.
 1. Create a class in `app/Replay/Scenarios/` that implements
    [`ReplayScenario`](app/Replay/ReplayScenario.php):
 
-   ```php
-   class ProtectedPaymentScenario implements ReplayScenario
-   {
-       public function label(): string
-       {
-           return 'payment (protected)';
-       }
+    ```php
+    class ProtectedPaymentScenario implements ReplayScenario
+    {
+        public function label(): string
+        {
+            return 'payment (protected)';
+        }
 
-       public function attempt(
-           string $runId,
-           string $operationId,
-           string $attemptId,
-           bool $injectFault,
-       ): array {
-           return $this->dispatch('/api/payments/protected', [
-               'operation_id'    => $operationId,
-               'idempotency_key' => $this->idempotencyKey,
-               'run_id'          => $runId,
-               'attempt_id'      => $attemptId,
-               'inject_fault'    => $injectFault,
-           ], $attemptId);
-       }
-   }
-   ```
+        public function attempt(
+            string $runId,
+            string $operationId,
+            string $attemptId,
+            bool $injectFault,
+        ): array {
+            return $this->dispatch('/api/payments/protected', [
+                'operation_id'    => $operationId,
+                'idempotency_key' => $this->idempotencyKey,
+                'run_id'          => $runId,
+                'attempt_id'      => $attemptId,
+                'inject_fault'    => $injectFault,
+            ], $attemptId);
+        }
+    }
+    ```
 
 2. Register it in the `SCENARIOS` map inside
    [`ReplayRunCommand`](app/Console/Commands/ReplayRunCommand.php):
 
-   ```php
-   'payment' => [
-       'vulnerable' => VulnerablePaymentScenario::class,
-       'protected'  => ProtectedPaymentScenario::class,
-   ],
-   ```
+    ```php
+    'payment' => [
+        'vulnerable' => VulnerablePaymentScenario::class,
+        'protected'  => ProtectedPaymentScenario::class,
+    ],
+    ```
 
 3. The `ReplayRunner` needs no changes — it calls `attempt()` twice and
    evaluates the evidence automatically.

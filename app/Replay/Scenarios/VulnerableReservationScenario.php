@@ -5,6 +5,7 @@ namespace App\Replay\Scenarios;
 use App\Replay\ReplayScenario;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
 /**
@@ -41,6 +42,10 @@ class VulnerableReservationScenario implements ReplayScenario
     {
         $content = json_encode($data);
 
+        if ($content === false) {
+            throw new RuntimeException('Failed to encode the replay request payload as JSON.');
+        }
+
         $symfonyRequest = SymfonyRequest::create(
             url($uri),
             'POST',
@@ -60,15 +65,45 @@ class VulnerableReservationScenario implements ReplayScenario
         $response = $kernel->handle($request);
         $kernel->terminate($request, $response);
 
-        $body = json_decode($response->getContent(), associative: true) ?? [];
+        $rawBody = $response->getContent();
+
+        if ($rawBody === false) {
+            throw new RuntimeException('Failed to read the replay response body.');
+        }
+
+        $body = $this->responseBody($rawBody);
 
         return [
             'attempt_id' => $attemptId,
             'http_status' => $response->getStatusCode(),
             'resource_type' => 'reservation',
-            'resource_id' => isset($body['reservation_id']) ? (int) $body['reservation_id'] : null,
+            'resource_id' => isset($body['reservation_id']) && is_numeric($body['reservation_id']) ? (int) $body['reservation_id'] : null,
             'order_id' => null,
             'response_body' => $body,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function responseBody(string $json): array
+    {
+        $decoded = json_decode($json, associative: true);
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $body = [];
+
+        foreach ($decoded as $key => $value) {
+            if (! is_string($key)) {
+                continue;
+            }
+
+            $body[$key] = $value;
+        }
+
+        return $body;
     }
 }

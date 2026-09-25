@@ -24,14 +24,14 @@ class ReservationController extends Controller
         ]);
 
         // Deterministic fault injection: simulate a server fault after the
-        // reservation has been persisted. Enabled only in local/testing environments.
-        $injectFault = app()->environment('local', 'testing') && $request->boolean('inject_fault');
+        // reservation has been persisted. The guard above already limits this
+        // action to local and testing environments.
+        $injectFault = $request->boolean('inject_fault');
 
         $httpStatus = $injectFault ? 503 : 201;
 
         // Record replay evidence when a run_id is provided.
-        // Restricted to local/testing environments only.
-        if (app()->environment('local', 'testing') && $request->filled('run_id')) {
+        if ($request->filled('run_id')) {
             $attemptId = $request->input('attempt_id') ?: (string) Str::uuid();
 
             ReplayAttempt::create([

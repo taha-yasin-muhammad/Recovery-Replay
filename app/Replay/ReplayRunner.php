@@ -84,13 +84,18 @@ class ReplayRunner
 
         // Generic resource identity: use resource_id when available, fall back
         // to order_id for evidence rows recorded before the migration.
-        $resourceIds = $attempts
-            ->map(fn ($a) => $a->resource_id ?? $a->order_id)
-            ->filter()
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
+        $resourceIds = array_values(
+            $attempts
+                ->map(function (ReplayAttempt $attempt): int {
+                    $identifier = $attempt->resource_id ?? $attempt->order_id;
+
+                    return is_numeric($identifier) ? (int) $identifier : 0;
+                })
+                ->filter(fn (int $id): bool => $id > 0)
+                ->unique()
+                ->sort()
+                ->all(),
+        );
 
         $duplicateResources = count($resourceIds) > 1;
         $sameResourceOnRetry = count($resourceIds) === 1;
@@ -99,7 +104,18 @@ class ReplayRunner
         $allOrders = $attempts->every(fn ($a) => ($a->resource_type ?? 'order') === 'order');
 
         $orderIds = $allOrders
-            ? $attempts->pluck('order_id')->filter()->unique()->sort()->values()->all()
+            ? array_values(
+                $attempts
+                    ->map(function (ReplayAttempt $attempt): int {
+                        $identifier = $attempt->order_id;
+
+                        return is_numeric($identifier) ? (int) $identifier : 0;
+                    })
+                    ->filter(fn (int $id): bool => $id > 0)
+                    ->unique()
+                    ->sort()
+                    ->all(),
+            )
             : [];
 
         $duplicateOrders = count($orderIds) > 1;
@@ -127,15 +143,15 @@ class ReplayRunner
         return [
             'run_id' => $runId,
             'scenario' => $this->scenario->label(),
-            'attempts' => $attempts->map(fn ($a) => [
-                'attempt_id' => $a->attempt_id,
-                'http_status' => $a->http_status,
-                'resource_type' => $a->resource_type,
-                'resource_id' => $a->resource_id,
-                'order_id' => $a->order_id,
-                'order_count_after' => $a->order_count_after,
-                'attempted_at' => $a->attempted_at->toIso8601String(),
-            ])->values()->all(),
+            'attempts' => array_values($attempts->map(fn (ReplayAttempt $attempt): array => [
+                'attempt_id' => $attempt->attempt_id,
+                'http_status' => $attempt->http_status,
+                'resource_type' => $attempt->resource_type,
+                'resource_id' => $attempt->resource_id,
+                'order_id' => $attempt->order_id,
+                'order_count_after' => $attempt->order_count_after,
+                'attempted_at' => $attempt->attempted_at->toIso8601String(),
+            ])->all()),
             'resource_ids' => $resourceIds,
             'duplicate_resources' => $duplicateResources,
             'same_resource_on_retry' => $sameResourceOnRetry,

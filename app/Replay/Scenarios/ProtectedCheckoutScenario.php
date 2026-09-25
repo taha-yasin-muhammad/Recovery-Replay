@@ -27,7 +27,7 @@ class ProtectedCheckoutScenario extends VulnerableCheckoutScenario
     }
 
     /**
-     * @return array{attempt_id: string, http_status: int, order_id: int|null, response_body: array<string, mixed>}
+     * @return array{attempt_id: string, http_status: int, resource_type: string|null, resource_id: int|null, order_id: int|null, response_body: array<string, mixed>}
      */
     public function attempt(string $runId, string $operationId, string $attemptId, bool $injectFault): array
     {

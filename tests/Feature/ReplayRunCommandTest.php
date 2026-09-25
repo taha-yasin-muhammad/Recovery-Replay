@@ -168,6 +168,8 @@ test('runner returns INCONCLUSIVE when no evidence is recorded for the run', fun
             return [
                 'attempt_id' => $attemptId,
                 'http_status' => $injectFault ? 503 : 201,
+                'resource_type' => null,
+                'resource_id' => null,
                 'order_id' => null,
                 'response_body' => [],
             ];
