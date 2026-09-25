@@ -1,13 +1,24 @@
-import { Head } from '@inertiajs/react';
-import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
-import { ComparisonSummary } from '@/components/replay/comparison-summary';
+import { Head, Link } from '@inertiajs/react';
+import {
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+    type KeyboardEvent,
+} from 'react';
+import { ComparisonSidePanel } from '@/components/replay/comparison-side-panel';
+import { EvidenceInspector } from '@/components/replay/evidence-inspector';
 import { runScenario } from '@/components/replay/replay-client';
-import { ScenarioPanel } from '@/components/replay/scenario-panel';
+import { SharedStepper } from '@/components/replay/shared-stepper';
+import { StepContinue } from '@/components/replay/step-continue';
+import { VerdictStep } from '@/components/replay/verdict-step';
 import type {
+    InvestigationStep,
     PanelState,
     ScenarioDomain,
     ScenarioKind,
 } from '@/components/replay/types';
+import { cn } from '@/lib/utils';
 
 type DomainRuns = Record<ScenarioKind, PanelState>;
 
@@ -26,12 +37,41 @@ function idleRuns(): Record<ScenarioDomain, DomainRuns> {
 
 const DOMAINS: ScenarioDomain[] = ['checkout', 'reservation'];
 
+const DOMAIN_LABELS: Record<ScenarioDomain, string> = {
+    checkout: 'Checkout',
+    reservation: 'Reservation',
+};
+
+function bothDone(active: DomainRuns): boolean {
+    return (
+        active.vulnerable.phase === 'done' && active.protected.phase === 'done'
+    );
+}
+
+function anyRunning(active: DomainRuns): boolean {
+    return (
+        active.vulnerable.phase === 'running' ||
+        active.protected.phase === 'running'
+    );
+}
+
 export default function Demo() {
     const [domain, setDomain] = useState<ScenarioDomain>('checkout');
     const [runs, setRuns] = useState(idleRuns);
+    const [step, setStep] = useState<InvestigationStep>('initial');
+    const [inspectorSide, setInspectorSide] =
+        useState<ScenarioKind>('vulnerable');
     const checkoutTabRef = useRef<HTMLButtonElement>(null);
     const reservationTabRef = useRef<HTMLButtonElement>(null);
     const active = runs[domain];
+    const comparisonReady = bothDone(active);
+    const comparisonRunning = anyRunning(active);
+
+    useEffect(() => {
+        if (!comparisonReady && step === 'verdict') {
+            setStep('initial');
+        }
+    }, [comparisonReady, step]);
 
     const handleRun = useCallback(
         async (scenarioDomain: ScenarioDomain, kind: ScenarioKind) => {
@@ -47,12 +87,12 @@ export default function Demo() {
                 const result = await runScenario(
                     scenarioDomain,
                     kind,
-                    (step) => {
+                    (progress) => {
                         setRuns((current) => ({
                             ...current,
                             [scenarioDomain]: {
                                 ...current[scenarioDomain],
-                                [kind]: { phase: 'running', step },
+                                [kind]: { phase: 'running', step: progress },
                             },
                         }));
                     },
@@ -69,6 +109,8 @@ export default function Demo() {
                         },
                     },
                 }));
+
+                return true;
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : String(error);
@@ -80,13 +122,40 @@ export default function Demo() {
                         [kind]: { phase: 'error', message },
                     },
                 }));
+
+                return false;
             }
         },
         [],
     );
 
+    const runComparison = useCallback(async () => {
+        setStep('initial');
+        const [vulnerableOk, protectedOk] = await Promise.all([
+            handleRun(domain, 'vulnerable'),
+            handleRun(domain, 'protected'),
+        ]);
+
+        if (vulnerableOk && protectedOk) {
+            setStep('initial');
+        }
+    }, [domain, handleRun]);
+
+    const rerunSide = useCallback(
+        async (kind: ScenarioKind) => {
+            const ok = await handleRun(domain, kind);
+
+            if (ok) {
+                setStep('initial');
+            }
+        },
+        [domain, handleRun],
+    );
+
     function selectDomain(next: ScenarioDomain) {
         setDomain(next);
+        setStep('initial');
+        setInspectorSide('vulnerable');
         const tab =
             next === 'checkout'
                 ? checkoutTabRef.current
@@ -120,98 +189,212 @@ export default function Demo() {
         selectDomain(next);
     }
 
+    const vulnerableDone =
+        active.vulnerable.phase === 'done' ? active.vulnerable : null;
+    const protectedDone =
+        active.protected.phase === 'done' ? active.protected : null;
+    const failedComparison =
+        active.vulnerable.phase === 'error' ||
+        active.protected.phase === 'error';
+
     return (
         <>
-            <Head title="Replay Explorer" />
+            <Head title="Investigation Workspace" />
 
-            <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-                <div className="mx-auto max-w-6xl">
-                    <div className="mb-6">
-                        <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
-                            Before / after comparison
+            <div className="relative min-h-screen overflow-x-hidden bg-surface text-ink">
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(15,118,110,0.12),transparent),radial-gradient(ellipse_60%_40%_at_100%_0%,rgba(180,83,9,0.06),transparent)]"
+                />
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,rgba(15,23,32,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,32,0.04)_1px,transparent_1px)] [mask-image:linear-gradient(to_bottom,black,transparent_85%)] [background-size:48px_48px] opacity-[0.35]"
+                />
+
+                <div className="relative mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+                    <header className="replay-fade-up mb-6 flex flex-col gap-6 border-b border-line pb-6 sm:mb-8 sm:pb-8">
+                        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                            <div className="max-w-2xl min-w-0">
+                                <p className="font-mono text-[0.7rem] tracking-[0.18em] text-accent uppercase">
+                                    Recovery Replay
+                                </p>
+                                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+                                    Investigation Workspace
+                                </h1>
+                                <p className="mt-3 text-sm leading-relaxed text-ink-muted sm:text-[0.95rem]">
+                                    One shared timeline for Before and After.
+                                    Compare the failed client response with what
+                                    actually persisted, then inspect the retry
+                                    outcome.
+                                </p>
+                            </div>
+
+                            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+                                <Link
+                                    href="/demo/history"
+                                    className="order-last text-center text-xs font-medium text-ink-muted underline-offset-2 hover:text-ink hover:underline sm:order-first sm:mb-2.5 sm:text-left"
+                                >
+                                    Run History
+                                </Link>
+                                <div>
+                                    <p
+                                        id="scenario-label"
+                                        className="mb-2 text-xs font-medium text-ink-faint"
+                                    >
+                                        Scenario
+                                    </p>
+                                    <div
+                                        role="tablist"
+                                        aria-labelledby="scenario-label"
+                                        className="inline-flex rounded-xl border border-line bg-surface-raised/80 p-1 shadow-[0_1px_0_rgba(15,23,32,0.04)] backdrop-blur-sm"
+                                        onKeyDown={onTabKeyDown}
+                                    >
+                                        <button
+                                            ref={checkoutTabRef}
+                                            id="scenario-tab-checkout"
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={
+                                                domain === 'checkout'
+                                            }
+                                            aria-controls="investigation-workspace"
+                                            tabIndex={
+                                                domain === 'checkout' ? 0 : -1
+                                            }
+                                            onClick={() =>
+                                                selectDomain('checkout')
+                                            }
+                                            className={cn(
+                                                'rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
+                                                domain === 'checkout'
+                                                    ? 'bg-ink text-white'
+                                                    : 'text-ink-muted hover:bg-surface hover:text-ink',
+                                            )}
+                                        >
+                                            {DOMAIN_LABELS.checkout}
+                                        </button>
+                                        <button
+                                            ref={reservationTabRef}
+                                            id="scenario-tab-reservation"
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={
+                                                domain === 'reservation'
+                                            }
+                                            aria-controls="investigation-workspace"
+                                            tabIndex={
+                                                domain === 'reservation'
+                                                    ? 0
+                                                    : -1
+                                            }
+                                            onClick={() =>
+                                                selectDomain('reservation')
+                                            }
+                                            className={cn(
+                                                'rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
+                                                domain === 'reservation'
+                                                    ? 'bg-ink text-white'
+                                                    : 'text-ink-muted hover:bg-surface hover:text-ink',
+                                            )}
+                                        >
+                                            {DOMAIN_LABELS.reservation}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        void runComparison();
+                                    }}
+                                    disabled={comparisonRunning}
+                                    className="inline-flex items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {comparisonRunning
+                                        ? 'Running comparison…'
+                                        : 'Run comparison'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-ink-faint">
+                            Each side uses a separate run id and isolated
+                            evidence. Rerun either side independently from its
+                            panel.
                         </p>
-                        <h1 className="mt-1 text-xl font-semibold text-gray-900">
-                            Recovery Replay Explorer
-                        </h1>
-                        <p className="mt-1 max-w-3xl text-sm text-gray-500">
-                            Compare a vulnerable retry with an idempotent retry
-                            for checkout or reservation. Statuses, resource ids,
-                            and counts come from the live responses and the
-                            recorded replay attempts.
-                        </p>
-                    </div>
+                    </header>
 
-                    <div
-                        role="tablist"
-                        aria-label="Replay scenario"
-                        className="mb-4 inline-flex max-w-full flex-wrap rounded border border-gray-200 bg-white p-1"
-                        onKeyDown={onTabKeyDown}
-                    >
-                        <button
-                            ref={checkoutTabRef}
-                            id="scenario-tab-checkout"
-                            type="button"
-                            role="tab"
-                            aria-selected={domain === 'checkout'}
-                            aria-controls="scenario-panel"
-                            tabIndex={domain === 'checkout' ? 0 : -1}
-                            onClick={() => setDomain('checkout')}
-                            className={`rounded px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 ${domain === 'checkout' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                        >
-                            Checkout
-                        </button>
-                        <button
-                            ref={reservationTabRef}
-                            id="scenario-tab-reservation"
-                            type="button"
-                            role="tab"
-                            aria-selected={domain === 'reservation'}
-                            aria-controls="scenario-panel"
-                            tabIndex={domain === 'reservation' ? 0 : -1}
-                            onClick={() => setDomain('reservation')}
-                            className={`rounded px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 ${domain === 'reservation' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                        >
-                            Reservation
-                        </button>
-                    </div>
-                    <p className="mb-4 text-xs text-gray-500">
-                        Checkout and reservation runs stay separate, including
-                        their run ids.
-                    </p>
-
-                    <div
-                        id="scenario-panel"
-                        role="tabpanel"
-                        aria-labelledby={
-                            domain === 'checkout'
-                                ? 'scenario-tab-checkout'
-                                : 'scenario-tab-reservation'
-                        }
-                        className="grid grid-cols-1 gap-6 lg:grid-cols-2"
-                    >
-                        <ScenarioPanel
-                            domain={domain}
-                            kind="vulnerable"
-                            state={active.vulnerable}
-                            onRun={() => {
-                                void handleRun(domain, 'vulnerable');
-                            }}
+                    <div className="replay-fade-up-delay flex flex-col gap-6">
+                        <SharedStepper
+                            step={step}
+                            onChange={setStep}
+                            enabled={comparisonReady}
                         />
-                        <ScenarioPanel
-                            domain={domain}
-                            kind="protected"
-                            state={active.protected}
-                            onRun={() => {
-                                void handleRun(domain, 'protected');
-                            }}
-                        />
-                    </div>
 
-                    <ComparisonSummary
-                        domain={domain}
-                        vulnerable={active.vulnerable}
-                        protectedState={active.protected}
-                    />
+                        {failedComparison && !comparisonReady && (
+                            <div
+                                role="alert"
+                                className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger"
+                            >
+                                Comparison incomplete — at least one side
+                                failed. Fix or rerun the failed side before
+                                treating this as a successful Before/After
+                                comparison.
+                            </div>
+                        )}
+
+                        <div
+                            id="investigation-workspace"
+                            role="tabpanel"
+                            aria-labelledby={`investigation-step-${step}`}
+                            className="flex min-w-0 flex-col gap-6"
+                        >
+                            {step === 'verdict' &&
+                            vulnerableDone &&
+                            protectedDone ? (
+                                <VerdictStep
+                                    domain={domain}
+                                    vulnerable={vulnerableDone}
+                                    protectedState={protectedDone}
+                                />
+                            ) : (
+                                <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+                                    <ComparisonSidePanel
+                                        domain={domain}
+                                        kind="vulnerable"
+                                        state={active.vulnerable}
+                                        step={step}
+                                        onRerun={() => {
+                                            void rerunSide('vulnerable');
+                                        }}
+                                    />
+                                    <ComparisonSidePanel
+                                        domain={domain}
+                                        kind="protected"
+                                        state={active.protected}
+                                        step={step}
+                                        onRerun={() => {
+                                            void rerunSide('protected');
+                                        }}
+                                    />
+                                </div>
+                            )}
+
+                            <EvidenceInspector
+                                step={step}
+                                side={inspectorSide}
+                                onSideChange={setInspectorSide}
+                                vulnerable={active.vulnerable}
+                                protectedState={active.protected}
+                            />
+
+                            <StepContinue
+                                step={step}
+                                enabled={comparisonReady}
+                                onChange={setStep}
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
         </>

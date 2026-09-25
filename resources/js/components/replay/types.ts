@@ -2,6 +2,32 @@ export type ScenarioDomain = 'checkout' | 'reservation';
 
 export type ScenarioKind = 'vulnerable' | 'protected';
 
+/** Live comparison sides, or historical inspection without a persisted scenario mode. */
+export type AttemptPresentation = ScenarioKind | 'historical';
+
+export type InvestigationStep = 'initial' | 'retry' | 'verdict';
+
+export type SafetyResult = 'safe' | 'unsafe' | 'inconclusive';
+
+export interface RunSummary {
+    run_id: string;
+    resource_type: string | null;
+    attempt_count: number;
+    resource_count: number;
+    recorded_at: string | null;
+    reproduction_succeeded: boolean;
+    operation_safe: boolean;
+    duplicate_resources: boolean;
+    same_resource_on_retry: boolean;
+    safety_result: SafetyResult;
+    incomplete: boolean;
+    resource_ids: number[];
+}
+
+export type InspectorAttempt = 'initial' | 'retry';
+
+export type InspectorEvidenceTab = 'http' | 'replay' | 'persisted' | 'raw';
+
 export interface ReplayAttempt {
     id: number;
     run_id: string;

@@ -13,5 +13,6 @@ if (app()->environment('local', 'testing')) {
     Route::post('/checkout/protected', [ProtectedCheckoutController::class, 'store']);
     Route::post('/reservations', [ReservationController::class, 'store']);
     Route::post('/reservations/protected', [ProtectedReservationController::class, 'store']);
+    Route::get('/replay-runs', [ReplayRunController::class, 'index']);
     Route::get('/replay-runs/{runId}', [ReplayRunController::class, 'show']);
 }

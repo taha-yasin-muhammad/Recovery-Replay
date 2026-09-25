@@ -21,6 +21,10 @@ class ReplayAttempt extends Model
     ];
 
     protected $casts = [
+        'order_id' => 'integer',
+        'resource_id' => 'integer',
+        'http_status' => 'integer',
+        'order_count_after' => 'integer',
         'attempted_at' => 'datetime',
     ];
 }

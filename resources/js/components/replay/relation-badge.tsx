@@ -1,4 +1,5 @@
 import type { ResourceRelation } from '@/components/replay/types';
+import { cn } from '@/lib/utils';
 
 const LABELS: Record<ResourceRelation, string> = {
     initial: 'Initial resource',
@@ -8,16 +9,19 @@ const LABELS: Record<ResourceRelation, string> = {
 };
 
 const STYLES: Record<ResourceRelation, string> = {
-    initial: 'bg-gray-100 text-gray-700',
-    reused: 'bg-green-100 text-green-800',
-    new: 'bg-red-100 text-red-800',
-    unrecorded: 'bg-gray-100 text-gray-500',
+    initial: 'bg-surface text-ink-muted ring-1 ring-line',
+    reused: 'bg-safe-soft text-safe',
+    new: 'bg-danger-soft text-danger',
+    unrecorded: 'bg-surface text-ink-faint ring-1 ring-line',
 };
 
 export function RelationBadge({ relation }: { relation: ResourceRelation }) {
     return (
         <span
-            className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${STYLES[relation]}`}
+            className={cn(
+                'inline-block rounded-md px-2 py-0.5 text-xs font-medium',
+                STYLES[relation],
+            )}
         >
             {LABELS[relation]}
         </span>

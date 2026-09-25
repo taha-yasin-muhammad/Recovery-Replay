@@ -8,4 +8,57 @@
         'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    --font-mono:
+        ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas,
+        'Liberation Mono', 'Courier New', monospace;
+    --color-ink: #0f1720;
+    --color-ink-muted: #5b6775;
+    --color-ink-faint: #8b97a5;
+    --color-surface: #f4f7f9;
+    --color-surface-raised: #ffffff;
+    --color-line: #d7e0e8;
+    --color-line-strong: #b8c5d1;
+    --color-accent: #0f766e;
+    --color-accent-soft: #ccfbf1;
+    --color-warn: #b45309;
+    --color-warn-soft: #ffedd5;
+    --color-danger: #b42318;
+    --color-danger-soft: #fee4e2;
+    --color-safe: #067647;
+    --color-safe-soft: #d1fadf;
+}
+
+@keyframes replay-fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes replay-pulse-soft {
+    0%,
+    100% {
+        opacity: 0.45;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@layer utilities {
+    .replay-fade-up {
+        animation: replay-fade-up 0.45s ease-out both;
+    }
+
+    .replay-fade-up-delay {
+        animation: replay-fade-up 0.55s ease-out 0.08s both;
+    }
+
+    .replay-pulse-soft {
+        animation: replay-pulse-soft 1.4s ease-in-out infinite;
+    }
 }
