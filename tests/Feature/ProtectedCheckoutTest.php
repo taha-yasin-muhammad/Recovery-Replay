@@ -1,0 +1,158 @@
+<?php
+
+use App\Models\Order;
+use App\Models\ReplayAttempt;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+// Protected checkout mode: idempotency prevents duplicate orders on retry.
+
+test('vulnerable mode still creates two orders on retry', function () {
+    $this->postJson('/api/checkout', [
+        'operation_id' => 'op-vuln-1',
+        'inject_fault' => true,
+    ])->assertStatus(503);
+
+    $this->postJson('/api/checkout', [
+        'operation_id' => 'op-vuln-1',
+        'inject_fault' => false,
+    ])->assertStatus(201);
+
+    $this->assertDatabaseCount('orders', 2);
+});
+
+test('protected mode creates exactly one order even after a 503', function () {
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-prot-1',
+        'idempotency_key' => 'idem-prot-1',
+        'inject_fault' => true,
+    ])->assertStatus(503);
+
+    $this->assertDatabaseCount('orders', 1);
+
+    $retry = $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-prot-1',
+        'idempotency_key' => 'idem-prot-1',
+        'inject_fault' => false,
+    ]);
+
+    $retry->assertStatus(200);
+
+    // Still only one order.
+    $this->assertDatabaseCount('orders', 1);
+});
+
+test('both protected attempts reference the same order', function () {
+    $runId = 'run-prot-same-order';
+    $operationId = 'op-prot-same';
+    $idempotencyKey = 'idem-same-order';
+
+    $first = $this->postJson('/api/checkout/protected', [
+        'operation_id' => $operationId,
+        'idempotency_key' => $idempotencyKey,
+        'inject_fault' => true,
+        'run_id' => $runId,
+        'attempt_id' => 'attempt-prot-1',
+    ]);
+
+    $first->assertStatus(503);
+    $firstOrderId = Order::where('idempotency_key', $idempotencyKey)->value('id');
+
+    $second = $this->postJson('/api/checkout/protected', [
+        'operation_id' => $operationId,
+        'idempotency_key' => $idempotencyKey,
+        'inject_fault' => false,
+        'run_id' => $runId,
+        'attempt_id' => 'attempt-prot-2',
+    ]);
+
+    $second->assertStatus(200)
+        ->assertJsonFragment(['order_id' => $firstOrderId]);
+
+    // Both replay attempt records reference the same order.
+    $attempts = ReplayAttempt::where('run_id', $runId)->get();
+    expect($attempts)->toHaveCount(2);
+    expect($attempts->pluck('order_id')->unique()->count())->toBe(1);
+    expect($attempts->first()->order_id)->toBe($firstOrderId);
+});
+
+test('different idempotency keys create separate orders', function () {
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-diff-keys',
+        'idempotency_key' => 'idem-key-a',
+    ])->assertStatus(201);
+
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-diff-keys',
+        'idempotency_key' => 'idem-key-b',
+    ])->assertStatus(201);
+
+    $this->assertDatabaseCount('orders', 2);
+});
+
+test('first protected attempt returns 503 but persists the order', function () {
+    $response = $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-prot-fault',
+        'idempotency_key' => 'idem-prot-fault',
+        'inject_fault' => true,
+    ]);
+
+    $response->assertStatus(503);
+    $this->assertDatabaseCount('orders', 1);
+    $this->assertDatabaseHas('orders', ['idempotency_key' => 'idem-prot-fault']);
+});
+
+test('retry with same idempotency key returns HTTP 200 with existing order data', function () {
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-prot-200',
+        'idempotency_key' => 'idem-prot-200',
+        'inject_fault' => true,
+    ])->assertStatus(503);
+
+    $orderId = Order::where('idempotency_key', 'idem-prot-200')->value('id');
+
+    $retry = $this->postJson('/api/checkout/protected', [
+        'operation_id' => 'op-prot-200',
+        'idempotency_key' => 'idem-prot-200',
+    ]);
+
+    $retry->assertStatus(200)
+        ->assertJsonFragment(['order_id' => $orderId, 'status' => 'pending']);
+});
+
+test('protected attempt records replay evidence for both attempts under the same run', function () {
+    $runId = 'run-prot-evidence';
+    $operationId = 'op-prot-evidence';
+    $idempotencyKey = 'idem-evidence';
+
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => $operationId,
+        'idempotency_key' => $idempotencyKey,
+        'inject_fault' => true,
+        'run_id' => $runId,
+        'attempt_id' => 'prot-attempt-1',
+    ])->assertStatus(503);
+
+    $this->postJson('/api/checkout/protected', [
+        'operation_id' => $operationId,
+        'idempotency_key' => $idempotencyKey,
+        'inject_fault' => false,
+        'run_id' => $runId,
+        'attempt_id' => 'prot-attempt-2',
+    ])->assertStatus(200);
+
+    $this->assertDatabaseCount('replay_attempts', 2);
+
+    $attempts = ReplayAttempt::where('run_id', $runId)->orderBy('attempted_at')->get();
+
+    expect($attempts[0]->http_status)->toBe(503);
+    expect($attempts[1]->http_status)->toBe(200);
+
+    // Both attempts point to the same order.
+    expect($attempts[0]->order_id)->toBe($attempts[1]->order_id);
+
+    // order_count_after is 1 for both since no duplicate was created.
+    expect($attempts[0]->order_count_after)->toBe(1);
+    expect($attempts[1]->order_count_after)->toBe(1);
+});
