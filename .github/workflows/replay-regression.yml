@@ -1,0 +1,91 @@
+name: recovery-replay regression
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_DEBUG: false
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /tmp/replay-ci.sqlite
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      BROADCAST_CONNECTION: null
+      LOG_CHANNEL: stderr
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Create SQLite database
+        run: touch /tmp/replay-ci.sqlite
+
+      - name: Run migrations
+        run: php artisan migrate --force --no-interaction
+
+      - name: Run Laravel test suite
+        run: php artisan test --compact
+
+      - name: Run protected checkout replay
+        run: |
+          php artisan replay:run checkout --mode=protected --json \
+            > /tmp/replay-checkout.json
+        # Exit code 1 from the command (unsafe operation) will fail this step.
+
+      - name: Run protected reservation replay
+        run: |
+          php artisan replay:run reservation --mode=protected --json \
+            > /tmp/replay-reservation.json
+        # Exit code 1 from the command (unsafe operation) will fail this step.
+
+      - name: Verify checkout report is safe
+        run: |
+          safe=$(php -r "echo json_decode(file_get_contents('/tmp/replay-checkout.json'), true)['operation_safe'] ? 'true' : 'false';")
+          echo "checkout operation_safe=${safe}"
+          if [ "$safe" != "true" ]; then
+            echo "::error::Protected checkout replay reported an unsafe operation."
+            exit 1
+          fi
+
+      - name: Verify reservation report is safe
+        run: |
+          safe=$(php -r "echo json_decode(file_get_contents('/tmp/replay-reservation.json'), true)['operation_safe'] ? 'true' : 'false';")
+          echo "reservation operation_safe=${safe}"
+          if [ "$safe" != "true" ]; then
+            echo "::error::Protected reservation replay reported an unsafe operation."
+            exit 1
+          fi
+
+      - name: Upload replay reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-reports
+          path: |
+            /tmp/replay-checkout.json
+            /tmp/replay-reservation.json
+          retention-days: 30
