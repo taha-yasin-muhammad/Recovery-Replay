@@ -391,6 +391,13 @@ id from the live response body. Safety evaluation still uses **persisted**
 - `attempted_at` = now
 - `order_id` = `null`
 
+**Warning (existing apps):** Validation or business-conflict rules may reject a
+retry **before** `ReplayAttempt` instrumentation runs. If only the first attempt
+is recorded, Recovery Replay correctly returns `INCONCLUSIVE`. No duplicate
+resource does not, by itself, prove successful idempotent reuse or that the
+client recovered the original result. Do not assert which function rejected the
+retry in FlagHalls — its source was inaccessible during the latest assessment.
+
 ---
 
 ## Expected results and exit codes
