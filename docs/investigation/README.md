@@ -8,16 +8,25 @@ This directory preserves evidence from two separate investigation activities.
 ## 1. Earlier CLI Runs (`earlier-cli-runs/`)
 
 These files were produced by running the replay CLI tool **before** the
-Bob-led investigation session. They are the original JSON outputs written to
-`D:\2026\` by the CLI process and copied here verbatim.
+Bob-led investigation session. The originals were written to `D:\2026\` by
+the CLI process in **UTF-16 LE with BOM** encoding.
 
-| File | Run ID | Scenario | Verdict |
-|------|--------|----------|---------|
+The repository copies contain **identical JSON content** but have been
+transcoded from UTF-16 LE (BOM) to **UTF-8 without BOM** so that standard
+tooling (formatters, linters, CI checks) can read them. No JSON values,
+keys, run IDs, attempt IDs, resource IDs, HTTP statuses, verdicts, or any
+other evidence fields were changed during transcoding.
+
+| File                           | Run ID                                 | Scenario              | Verdict                                                                    |
+| ------------------------------ | -------------------------------------- | --------------------- | -------------------------------------------------------------------------- |
 | `rr-vulnerable--b1ee39b6.json` | `b1ee39b6-9c03-43cb-940f-d78fa6171818` | checkout (vulnerable) | EXPECTED FAILURE — duplicate resources created (no idempotency protection) |
-| `rr-protected--f968778a.json`  | `f968778a-6333-4f02-8624-2ac3c8d1932f` | checkout (protected)  | PASS — retry returned the same resource (idempotency held) |
+| `rr-protected--f968778a.json`  | `f968778a-6333-4f02-8624-2ac3c8d1932f` | checkout (protected)  | PASS — retry returned the same resource (idempotency held)                 |
 
-**Source:** Original CLI stdout/files at `D:\2026\rr-vulnerable.json` and
-`D:\2026\rr-protected.json`, copied without modification.
+**Source:** Original CLI output files at `D:\2026\rr-vulnerable.json` and
+`D:\2026\rr-protected.json` (UTF-16 LE with BOM, byte-identical to what the
+CLI wrote). Repository copies transcoded to UTF-8 without BOM; JSON content
+is unchanged and verified to match the originals by round-trip parse
+comparison.
 
 **Exit-code note:** The original terminal exit codes for these CLI runs are
 **not recorded here**. Do not infer them from any other experiment's output.
@@ -29,11 +38,12 @@ Bob-led investigation session. They are the original JSON outputs written to
 These files contain a **read-only extraction** from `storage/investigation.sqlite`,
 performed after the Bob-led investigation session was complete.
 
-| File | Run IDs covered |
-|------|----------------|
+| File                                  | Run IDs covered                                                                                          |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `db-extract--cbfa7a1c--cd760b55.json` | `cbfa7a1c-3e01-4a5d-9784-27c7edbcec7d` (vulnerable) · `cd760b55-67c7-4b3d-ae69-730de936cc0e` (protected) |
 
 **Important limitations:**
+
 - This is **not** the original terminal output from the investigation session.
   The original session output (screenshots, live console text) was not captured
   and is **MISSING** — see section 4 below.
@@ -44,6 +54,7 @@ performed after the Bob-led investigation session was complete.
   the two verified run IDs were exported. No other tables or rows were exported.
 
 **Extraction query scope:**
+
 - `replay_attempts` — all columns, filtered to the two run IDs above.
 - `orders` — all columns, filtered to `operation_id` values that appear in
   those replay attempt rows.
@@ -65,11 +76,11 @@ mixed with the evidence in this directory.
 The following original artifacts were **not captured** and cannot be
 reconstructed:
 
-| Artifact | Status |
-|----------|--------|
-| Original Bob session screenshots (investigation) | **MISSING** |
-| Original investigation CLI JSON files (if any were written separately from `D:\2026\`) | **MISSING** |
-| Terminal exit codes for earlier CLI runs `b1ee39b6` and `f968778a` | **NOT RECORDED** |
+| Artifact                                                                               | Status           |
+| -------------------------------------------------------------------------------------- | ---------------- |
+| Original Bob session screenshots (investigation)                                       | **MISSING**      |
+| Original investigation CLI JSON files (if any were written separately from `D:\2026\`) | **MISSING**      |
+| Terminal exit codes for earlier CLI runs `b1ee39b6` and `f968778a`                     | **NOT RECORDED** |
 
 Do not substitute any preserved artifact for a missing one.
 
