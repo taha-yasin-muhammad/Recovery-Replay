@@ -3,29 +3,32 @@
 Documentation audit only. No demo video or CI badge was fabricated.
 Items marked **MISSING** need human follow-up before submission.
 
-Last audited against the local tree while preparing submission docs
-(measurement evidence from commit `62642f4`).
+Last audited against the local tree while preparing submission docs.
+Measurement evidence and Invoice spike runs were recorded against
+`62642f4`; documentation baseline for adoption is **`a985e9c`**
+(tests, recovery-replay regression, Playwright E2E green).
 
 ---
 
 ## Checklist
 
-| Area                                        | Status                   | Notes                                                                                                                                                                      |
-| ------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| README matches current functionality        | **Updated**              | Workflow, env lock, `/demo`, scenario instrumentation, non-package stance                                                                                                  |
-| Demo instructions                           | **Present**              | `composer setup`, `composer dev`, open `/demo` and `/demo/history`                                                                                                         |
-| Measurement document                        | **Present**              | [`docs/MEASUREMENT.md`](MEASUREMENT.md)                                                                                                                                    |
-| External adoption evidence summary          | **Present**              | [`bob_sessions/external-adoption/SUMMARY.md`](../bob_sessions/external-adoption/SUMMARY.md)                                                                                |
-| Measurement CSV / log in repo               | **Present**              | [`bob_sessions/value-measurement/`](../bob_sessions/value-measurement/)                                                                                                    |
-| Public GitHub repository                    | **Present (remote)**     | `https://github.com/taha-yasin-muhammad/Recovery-Replay.git` — confirm visibility is public in GitHub settings before submission                                           |
-| CI workflows in repo                        | **Present**              | `.github/workflows/tests.yml`, `replay-regression.yml`                                                                                                                     |
-| CI green on HEAD used for experiments       | **Verified earlier**     | On `62642f4`, both `tests` and `recovery-replay regression` succeeded (checked during Invoice spike). Re-confirm on GitHub Actions before final submit if new commits land |
-| Test instructions                           | **Present**              | `composer ci:check`, `php artisan test --compact`, local replay regression steps in README                                                                                 |
-| `bob_sessions` evidence folder              | **Partial**              | Inventory below — video and some spike artifacts still missing                                                                                                             |
-| Demo video                                  | **MISSING**              | No recording in this repository                                                                                                                                            |
-| Invoice spike app inside this repo          | **Intentionally absent** | Spike lived outside the repo (`D:\2026\invoice-replay-spike`); only the summary is checked in                                                                              |
-| Composer package / Packagist                | **Not claimed**          | Explicitly unsupported                                                                                                                                                     |
-| Production / remote network-failure support | **Not claimed**          | Explicitly unsupported                                                                                                                                                     |
+| Area                                        | Status                    | Notes                                                                                                                            |
+| ------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| README matches current functionality        | **Updated**               | Workflow, env lock, `/demo`, scenario instrumentation, non-package stance                                                        |
+| Demo instructions                           | **Present**               | `composer setup`, `composer dev`, open `/demo` and `/demo/history`                                                               |
+| Measurement document                        | **Present**               | [`docs/MEASUREMENT.md`](MEASUREMENT.md)                                                                                          |
+| External adoption procedure                 | **Present**               | [`docs/EXTERNAL_ADOPTION.md`](EXTERNAL_ADOPTION.md) — tested copy-and-instrument path from Invoice spike                         |
+| External adoption evidence summary          | **Present**               | [`bob_sessions/external-adoption/SUMMARY.md`](../bob_sessions/external-adoption/SUMMARY.md)                                      |
+| Measurement CSV / log in repo               | **Present**               | [`bob_sessions/value-measurement/`](../bob_sessions/value-measurement/)                                                          |
+| Public GitHub repository                    | **Present (remote)**      | `https://github.com/taha-yasin-muhammad/Recovery-Replay.git` — confirm visibility is public in GitHub settings before submission |
+| CI workflows in repo                        | **Present**               | `.github/workflows/tests.yml`, `replay-regression.yml`                                                                           |
+| CI green on documented baseline             | **Verified on `a985e9c`** | Tests, recovery-replay regression, and Playwright E2E green. Invoice spike itself ran on earlier green `62642f4`                 |
+| Test instructions                           | **Present**               | `composer ci:check`, `php artisan test --compact`, local replay regression steps in README                                       |
+| `bob_sessions` evidence folder              | **Partial**               | Inventory below — video and some spike artifacts still missing                                                                   |
+| Demo video                                  | **MISSING**               | No recording in this repository                                                                                                  |
+| Invoice spike app inside this repo          | **Intentionally absent**  | Spike lived outside the repo (`D:\2026\invoice-replay-spike`); only the summary is checked in                                    |
+| Composer package / Packagist                | **Not claimed**           | Explicitly unsupported                                                                                                           |
+| Production / remote network-failure support | **Not claimed**           | Explicitly unsupported                                                                                                           |
 
 ---
 
@@ -56,6 +59,7 @@ Confirm these **are** present on the default branch after you commit docs:
 
 - `README.md`
 - `docs/MEASUREMENT.md`
+- `docs/EXTERNAL_ADOPTION.md`
 - `docs/SUBMISSION.md`
 - `bob_sessions/**`
 - `.github/workflows/*.yml`

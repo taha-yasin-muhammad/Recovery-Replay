@@ -6,7 +6,8 @@ persisted attempt evidence, and emits an `operation_safe` verdict.
 
 Recovery Replay is **this application**, not a drop-in Composer package.
 External reuse today means copying a small PHP core and instrumenting the
-target endpoint (validated on a separate Invoice app; see below).
+target endpoint (validated on a separate Invoice app — see
+[`docs/EXTERNAL_ADOPTION.md`](docs/EXTERNAL_ADOPTION.md)).
 
 ---
 
@@ -186,16 +187,24 @@ when the evidence rows are complete.
 
 ### Using the core in another Laravel app
 
-This is **not** `composer require …`. The verified path is:
+This is **not** `composer require …` and is **not** zero-configuration.
 
-1. Copy the domain-generic PHP core (`ReplayScenario`, `ReplayRunner`,
-   `PersistedEvidenceEvaluator`, `ReplayAttempt`, `SimulatedPersistenceFault`)
-   and a compatible `replay_attempts` schema.
-2. Instrument your own endpoint as above.
-3. Add an app-specific scenario + CLI map.
+The only end-to-end tested path is documented in
+[`docs/EXTERNAL_ADOPTION.md`](docs/EXTERNAL_ADOPTION.md) (source of truth:
+separate Invoice spike summary in
+[`bob_sessions/external-adoption/SUMMARY.md`](bob_sessions/external-adoption/SUMMARY.md)).
 
-That path was validated on a separate Invoice application
-([`bob_sessions/external-adoption`](bob_sessions/external-adoption/SUMMARY.md)).
+In short:
+
+| Kind                                 | What                                                                                                                                                      |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Copy unchanged**                   | `ReplayScenario`, `ReplayRunner`, `PersistedEvidenceEvaluator`, `ReplayAttempt`, `SimulatedPersistenceFault`                                              |
+| **Adapt**                            | Consolidated `replay_attempts` schema, `ReplayRunCommand` scenario map, new scenario classes, local/testing route                                         |
+| **Change in the business operation** | Persist first; write evidence when `run_id` is set; return simulated post-persist `503` when `inject_fault` is true; add idempotency for a protected path |
+
+Expected CLI exits on that path: vulnerable **1**, protected **0**, missing
+evidence / `INCONCLUSIVE` **1**. Full field meanings:
+[Understanding the report fields](#understanding-the-report-fields).
 
 ---
 
@@ -210,25 +219,32 @@ That path was validated on a separate Invoice application
 
 ### What the external Invoice spike proved
 
-Documented in [`bob_sessions/external-adoption/SUMMARY.md`](bob_sessions/external-adoption/SUMMARY.md):
+Procedure: [`docs/EXTERNAL_ADOPTION.md`](docs/EXTERNAL_ADOPTION.md).
+Results: [`bob_sessions/external-adoption/SUMMARY.md`](bob_sessions/external-adoption/SUMMARY.md).
 
-- Separate Laravel Invoice app; `ReplayRunner` / `PersistedEvidenceEvaluator`
-  copied unchanged (byte-identical)
-- Vulnerable: post-persist `503`, duplicate invoices, unsafe
-- Missing evidence: `INCONCLUSIVE`
-- Protected: same invoice reused, safe
+- Separate minimal Laravel Invoice app; `ReplayRunner` /
+  `PersistedEvidenceEvaluator` reused unchanged
+- Vulnerable: post-persist `503`, duplicate invoices, unsafe (exit 1)
+- Missing evidence: `INCONCLUSIVE` (exit 1)
+- Protected: same invoice reused, safe (exit 0)
 - Integration required copy + instrumentation — **not** a Composer package
+
+The spike was a **fresh minimal** app with a dedicated SQLite database. It does
+**not** prove brownfield, remote-API, or production adoption.
 
 ### What remains unsupported or unverified
 
 - Production or non-`local|testing` use
 - Real network failures / remote HTTP without shared in-process kernel + DB
-- Drop-in packaging for arbitrary brownfield apps
+- Drop-in packaging or zero-config integration for arbitrary brownfield apps
 - Porting the demo UI into other applications
 - Human user studies (measurement was a scripted experiment)
 
 Controlled timing results (protocol, tables, limitations):
 [`docs/MEASUREMENT.md`](docs/MEASUREMENT.md).
+
+External adoption procedure:
+[`docs/EXTERNAL_ADOPTION.md`](docs/EXTERNAL_ADOPTION.md).
 
 Submission checklist and gaps:
 [`docs/SUBMISSION.md`](docs/SUBMISSION.md).
@@ -295,3 +311,6 @@ Both commands must exit `0` with `"operation_safe": true`.
 See [`bob_sessions/`](bob_sessions/README.md) for copied measurement artifacts,
 the external-adoption summary, and an inventory of still-missing submission
 items (including demo video).
+
+External adoption procedure (copy-and-instrument, not a package):
+[`docs/EXTERNAL_ADOPTION.md`](docs/EXTERNAL_ADOPTION.md).

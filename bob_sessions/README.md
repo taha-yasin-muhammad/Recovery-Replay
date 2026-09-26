@@ -17,6 +17,7 @@ are stored here. Missing items are listed explicitly.
 
 See also:
 
+- [`docs/EXTERNAL_ADOPTION.md`](../docs/EXTERNAL_ADOPTION.md) — tested copy-and-instrument procedure
 - [`docs/MEASUREMENT.md`](../docs/MEASUREMENT.md)
 - [`docs/SUBMISSION.md`](../docs/SUBMISSION.md)
 - Root [`README.md`](../README.md)
