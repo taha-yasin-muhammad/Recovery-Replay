@@ -37,7 +37,7 @@ function isSafetyResult(value: unknown): value is SafetyResult {
     return value === 'safe' || value === 'unsafe' || value === 'inconclusive';
 }
 
-function readRunSummary(value: unknown): RunSummary | null {
+export function readRunSummary(value: unknown): RunSummary | null {
     if (!isRecord(value) || typeof value.run_id !== 'string') {
         return null;
     }

@@ -5,6 +5,7 @@ import {
     orderAttempts,
     persistedFieldEntries,
 } from '@/components/replay/evidence';
+import { StatusBadge } from '@/components/replay/status-badge';
 import type {
     InspectorAttempt,
     InspectorEvidenceTab,
@@ -308,7 +309,22 @@ export function HistoricalEvidenceInspector({
                                 className="min-w-0"
                             >
                                 {evidenceTab === 'http' && (
-                                    <Unavailable message="HTTP response body is unavailable — it was not persisted with historical evidence. Recorded http_status is in Replay Evidence." />
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <StatusBadge
+                                                status={attempt.http_status}
+                                            />
+                                            <span className="text-sm font-medium text-ink">
+                                                HTTP {attempt.http_status}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-ink-muted">
+                                            Persisted attempt status from replay
+                                            evidence. This is not proof of
+                                            actual client receipt.
+                                        </p>
+                                        <Unavailable message="HTTP response body was not persisted with historical evidence." />
+                                    </div>
                                 )}
                                 {evidenceTab === 'replay' && (
                                     <dl>

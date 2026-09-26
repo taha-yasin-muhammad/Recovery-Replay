@@ -23,9 +23,12 @@ function domainFromResourceType(
 export function HistoricalVerdict({
     summary,
     state,
+    context = 'run',
 }: {
     summary: RunSummary;
     state: Extract<PanelState, { phase: 'done' }>;
+    /** Saved comparisons store before/after run ids; single runs do not. */
+    context?: 'run' | 'comparison';
 }) {
     const domain = domainFromResourceType(summary.resource_type);
     // Authoritative flags come from the API summary (PersistedEvidenceEvaluator).
@@ -46,8 +49,9 @@ export function HistoricalVerdict({
             <div>
                 <h2 className="text-sm font-semibold text-ink">Verdict</h2>
                 <p className="mt-1 text-xs text-ink-muted">
-                    Derived from this run’s persisted evidence only. Scenario
-                    mode and Before/After pairing were not recorded.
+                    {context === 'comparison'
+                        ? 'Derived from this run’s persisted evidence only. Scenario mode was not recorded for these runs.'
+                        : 'Derived from this run’s persisted evidence only. Scenario mode was not recorded.'}
                 </p>
             </div>
 

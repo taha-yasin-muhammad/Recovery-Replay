@@ -6,6 +6,7 @@ import {
     useState,
     type KeyboardEvent,
 } from 'react';
+import { saveComparison } from '@/components/replay/comparison-client';
 import { ComparisonSidePanel } from '@/components/replay/comparison-side-panel';
 import { EvidenceInspector } from '@/components/replay/evidence-inspector';
 import { runScenario } from '@/components/replay/replay-client';
@@ -55,12 +56,19 @@ function anyRunning(active: DomainRuns): boolean {
     );
 }
 
+type SaveState =
+    | { phase: 'idle' }
+    | { phase: 'saving' }
+    | { phase: 'saved'; comparisonId: string }
+    | { phase: 'error'; message: string };
+
 export default function Demo() {
     const [domain, setDomain] = useState<ScenarioDomain>('checkout');
     const [runs, setRuns] = useState(idleRuns);
     const [step, setStep] = useState<InvestigationStep>('initial');
     const [inspectorSide, setInspectorSide] =
         useState<ScenarioKind>('vulnerable');
+    const [saveState, setSaveState] = useState<SaveState>({ phase: 'idle' });
     const checkoutTabRef = useRef<HTMLButtonElement>(null);
     const reservationTabRef = useRef<HTMLButtonElement>(null);
     const active = runs[domain];
@@ -152,10 +160,47 @@ export default function Demo() {
         [domain, handleRun],
     );
 
+    const handleSaveComparison = useCallback(async () => {
+        const vuln = active.vulnerable;
+        const prot = active.protected;
+
+        if (vuln.phase !== 'done' || prot.phase !== 'done') {
+            return;
+        }
+
+        setSaveState({ phase: 'saving' });
+
+        try {
+            const result = await saveComparison(
+                vuln.data.run_id,
+                prot.data.run_id,
+            );
+
+            if (result.saved && result.comparison_id !== null) {
+                setSaveState({
+                    phase: 'saved',
+                    comparisonId: result.comparison_id,
+                });
+            } else {
+                setSaveState({
+                    phase: 'error',
+                    message:
+                        result.error ??
+                        'Comparison could not be saved. Verify both runs have complete evidence.',
+                });
+            }
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : String(error);
+            setSaveState({ phase: 'error', message });
+        }
+    }, [active]);
+
     function selectDomain(next: ScenarioDomain) {
         setDomain(next);
         setStep('initial');
         setInspectorSide('vulnerable');
+        setSaveState({ phase: 'idle' });
         const tab =
             next === 'checkout'
                 ? checkoutTabRef.current
@@ -196,6 +241,15 @@ export default function Demo() {
     const failedComparison =
         active.vulnerable.phase === 'error' ||
         active.protected.phase === 'error';
+
+    // Reset save state when either side gets rerun.
+    useEffect(() => {
+        if (saveState.phase !== 'idle') {
+            setSaveState({ phase: 'idle' });
+        }
+        // Intentionally only watching `active` identity changes (domain switches / reruns).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [active.vulnerable, active.protected]);
 
     return (
         <>
@@ -322,6 +376,47 @@ export default function Demo() {
                             evidence. Rerun either side independently from its
                             panel.
                         </p>
+
+                        {/* Save comparison — shown only when both sides are done */}
+                        {comparisonReady && (
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        void handleSaveComparison();
+                                    }}
+                                    disabled={
+                                        saveState.phase === 'saving' ||
+                                        saveState.phase === 'saved'
+                                    }
+                                    className="inline-flex items-center justify-center rounded-xl border border-safe/40 bg-safe-soft px-4 py-2 text-sm font-semibold text-safe transition-colors hover:bg-safe/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {saveState.phase === 'saving'
+                                        ? 'Saving…'
+                                        : saveState.phase === 'saved'
+                                          ? 'Saved ✓'
+                                          : 'Save comparison'}
+                                </button>
+
+                                {saveState.phase === 'saved' && (
+                                    <p className="font-mono text-xs text-ink-muted">
+                                        comparison_id:{' '}
+                                        <span className="font-mono text-xs text-ink">
+                                            {saveState.comparisonId}
+                                        </span>
+                                    </p>
+                                )}
+
+                                {saveState.phase === 'error' && (
+                                    <p
+                                        role="alert"
+                                        className="text-xs text-danger"
+                                    >
+                                        {saveState.message}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </header>
 
                     <div className="replay-fade-up-delay flex flex-col gap-6">

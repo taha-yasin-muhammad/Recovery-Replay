@@ -179,6 +179,9 @@ export function AttemptFlow({
     const resourceId = resourceIdOf(attempt);
     const isInitial = attemptIndex === 0;
     const isProtectedRetry = !isInitial && kind === 'protected';
+    const isReuseResult =
+        isProtectedRetry ||
+        (!isInitial && kind === 'historical' && relation === 'reused');
     const clientFailed =
         client !== null &&
         (client.http_status >= 500 || client.http_status === 503);
@@ -202,9 +205,21 @@ export function AttemptFlow({
             ? 'Recorded retry for this run. Idempotency key usage was not persisted.'
             : 'Client retries the same operation without an idempotency key.';
 
-    const serverTitle = isProtectedRetry
+    const serverTitle = isReuseResult
         ? 'Server-side result'
         : 'Server-side persistence';
+
+    const clientResponseTone = clientFailed
+        ? 'danger'
+        : client
+          ? 'safe'
+          : kind === 'historical'
+            ? attempt.http_status >= 500
+                ? 'danger'
+                : attempt.http_status >= 200 && attempt.http_status < 300
+                  ? 'safe'
+                  : 'neutral'
+            : 'neutral';
 
     return (
         <div className="flex flex-col">
@@ -229,7 +244,7 @@ export function AttemptFlow({
                             : 'neutral'
                 }
             >
-                {isProtectedRetry ? (
+                {isReuseResult ? (
                     <>
                         <p className="text-sm font-medium text-ink">
                             Existing resource returned
@@ -268,10 +283,7 @@ export function AttemptFlow({
 
             <FlowArrow />
 
-            <FlowCard
-                title="Client response"
-                tone={clientFailed ? 'danger' : client ? 'safe' : 'neutral'}
-            >
+            <FlowCard title="Client response" tone={clientResponseTone}>
                 {client ? (
                     <>
                         <div className="flex flex-wrap items-center gap-2">
@@ -292,6 +304,20 @@ export function AttemptFlow({
                                 {attempt.http_status}.
                             </p>
                         )}
+                    </>
+                ) : kind === 'historical' ? (
+                    <>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={attempt.http_status} />
+                            <span className="text-sm font-medium text-ink">
+                                HTTP {attempt.http_status}
+                            </span>
+                        </div>
+                        <p className="text-xs text-ink-muted">
+                            Persisted attempt status. HTTP response body was not
+                            persisted. This is not proof of actual client
+                            receipt.
+                        </p>
                     </>
                 ) : (
                     <p className="text-sm text-ink-faint">

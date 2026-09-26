@@ -1,10 +1,17 @@
 import { Head, Link } from '@inertiajs/react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
+    fetchComparisonList,
+    fetchComparison,
+    type ComparisonSummary,
+    type ComparisonDetail,
+} from '@/components/replay/comparison-client';
+import {
     fetchHistoricalRun,
     fetchRunHistory,
     type HistoryListMeta,
 } from '@/components/replay/history-client';
+import { HistoricalComparisonWorkspace } from '@/components/replay/historical-comparison-workspace';
 import { HistoricalRunWorkspace } from '@/components/replay/historical-run-workspace';
 import type {
     InvestigationStep,
@@ -13,6 +20,8 @@ import type {
     SafetyResult,
 } from '@/components/replay/types';
 import { cn } from '@/lib/utils';
+
+type HistoryTab = 'runs' | 'comparisons';
 
 function SafetyBadge({ result }: { result: SafetyResult }) {
     return (
@@ -46,27 +55,45 @@ function formatTimestamp(value: string | null): string {
 type View =
     | { mode: 'list' }
     | {
-          mode: 'detail';
+          mode: 'run-detail';
           summary: RunSummary;
           data: RunData;
+      }
+    | {
+          mode: 'comparison-detail';
+          comparison: ComparisonDetail;
       };
 
 export default function History() {
+    const [activeTab, setActiveTab] = useState<HistoryTab>('runs');
+
+    // ── Run history state ─────────────────────────────────────────────────
     const [runs, setRuns] = useState<RunSummary[]>([]);
-    const [meta, setMeta] = useState<HistoryListMeta | null>(null);
-    const [page, setPage] = useState(1);
+    const [runMeta, setRunMeta] = useState<HistoryListMeta | null>(null);
+    const [runPage, setRunPage] = useState(1);
     const [searchInput, setSearchInput] = useState('');
     const [activeSearch, setActiveSearch] = useState('');
-    const [listLoading, setListLoading] = useState(true);
-    const [listError, setListError] = useState<string | null>(null);
-    const [detailLoading, setDetailLoading] = useState(false);
-    const [detailError, setDetailError] = useState<string | null>(null);
+    const [runListLoading, setRunListLoading] = useState(true);
+    const [runListError, setRunListError] = useState<string | null>(null);
+    const [runDetailLoading, setRunDetailLoading] = useState(false);
+    const [runDetailError, setRunDetailError] = useState<string | null>(null);
+
+    // ── Comparison history state ──────────────────────────────────────────
+    const [comparisons, setComparisons] = useState<ComparisonSummary[]>([]);
+    const [compMeta, setCompMeta] = useState<HistoryListMeta | null>(null);
+    const [compPage, setCompPage] = useState(1);
+    const [compListLoading, setCompListLoading] = useState(false);
+    const [compListError, setCompListError] = useState<string | null>(null);
+    const [compDetailLoading, setCompDetailLoading] = useState(false);
+    const [compDetailError, setCompDetailError] = useState<string | null>(null);
+
     const [view, setView] = useState<View>({ mode: 'list' });
     const [step, setStep] = useState<InvestigationStep>('initial');
 
-    const loadList = useCallback(async (nextPage: number, runId: string) => {
-        setListLoading(true);
-        setListError(null);
+    // ── Load run list ─────────────────────────────────────────────────────
+    const loadRunList = useCallback(async (nextPage: number, runId: string) => {
+        setRunListLoading(true);
+        setRunListError(null);
 
         try {
             const response = await fetchRunHistory({
@@ -75,57 +102,113 @@ export default function History() {
                 runId: runId || undefined,
             });
             setRuns(response.data);
-            setMeta(response.meta);
-            setPage(response.meta.current_page);
+            setRunMeta(response.meta);
+            setRunPage(response.meta.current_page);
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : String(error);
-            setListError(message);
+            setRunListError(message);
             setRuns([]);
-            setMeta(null);
+            setRunMeta(null);
         } finally {
-            setListLoading(false);
+            setRunListLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        void loadList(page, activeSearch);
-    }, [loadList, page, activeSearch]);
+        void loadRunList(runPage, activeSearch);
+    }, [loadRunList, runPage, activeSearch]);
 
+    // ── Load comparison list ──────────────────────────────────────────────
+    const loadCompList = useCallback(async (nextPage: number) => {
+        setCompListLoading(true);
+        setCompListError(null);
+
+        try {
+            const response = await fetchComparisonList({
+                page: nextPage,
+                perPage: 10,
+            });
+            setComparisons(response.data);
+            setCompMeta(response.meta);
+            setCompPage(response.meta.current_page);
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : String(error);
+            setCompListError(message);
+            setComparisons([]);
+            setCompMeta(null);
+        } finally {
+            setCompListLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'comparisons') {
+            void loadCompList(compPage);
+        }
+    }, [loadCompList, compPage, activeTab]);
+
+    // ── Run list handlers ─────────────────────────────────────────────────
     function onSearchSubmit(event: FormEvent) {
         event.preventDefault();
         setView({ mode: 'list' });
-        setPage(1);
+        setRunPage(1);
         setActiveSearch(searchInput.trim());
     }
 
     function clearSearch() {
         setSearchInput('');
         setActiveSearch('');
-        setPage(1);
+        setRunPage(1);
         setView({ mode: 'list' });
     }
 
     async function openRun(runId: string) {
-        setDetailLoading(true);
-        setDetailError(null);
+        setRunDetailLoading(true);
+        setRunDetailError(null);
         setStep('initial');
 
         try {
             const detail = await fetchHistoricalRun(runId);
             setView({
-                mode: 'detail',
+                mode: 'run-detail',
                 summary: detail.summary,
                 data: detail.data,
             });
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : String(error);
-            setDetailError(message);
+            setRunDetailError(message);
             setView({ mode: 'list' });
         } finally {
-            setDetailLoading(false);
+            setRunDetailLoading(false);
         }
+    }
+
+    // ── Comparison handlers ───────────────────────────────────────────────
+    async function openComparison(comparisonId: string) {
+        setCompDetailLoading(true);
+        setCompDetailError(null);
+        setStep('initial');
+
+        try {
+            const detail = await fetchComparison(comparisonId);
+            setView({ mode: 'comparison-detail', comparison: detail });
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : String(error);
+            setCompDetailError(message);
+            setView({ mode: 'list' });
+        } finally {
+            setCompDetailLoading(false);
+        }
+    }
+
+    function switchTab(tab: HistoryTab) {
+        setActiveTab(tab);
+        setView({ mode: 'list' });
+        setStep('initial');
     }
 
     return (
@@ -152,9 +235,9 @@ export default function History() {
                                 Run History
                             </h1>
                             <p className="mt-3 text-sm leading-relaxed text-ink-muted sm:text-[0.95rem]">
-                                Find previously recorded replay runs and inspect
-                                their evidence. Opening a run never re-executes
-                                a scenario.
+                                Find previously recorded replay runs and saved
+                                comparisons. Opening either never re-executes a
+                                scenario.
                             </p>
                         </div>
                         <Link
@@ -165,7 +248,40 @@ export default function History() {
                         </Link>
                     </header>
 
-                    {view.mode === 'list' && (
+                    {/* Tab bar */}
+                    <div className="replay-fade-up-delay mb-6 flex gap-1 rounded-xl border border-line bg-surface-raised/80 p-1">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'runs'}
+                            onClick={() => switchTab('runs')}
+                            className={cn(
+                                'rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
+                                activeTab === 'runs'
+                                    ? 'bg-ink text-white'
+                                    : 'text-ink-muted hover:bg-surface hover:text-ink',
+                            )}
+                        >
+                            Individual runs
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'comparisons'}
+                            onClick={() => switchTab('comparisons')}
+                            className={cn(
+                                'rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
+                                activeTab === 'comparisons'
+                                    ? 'bg-ink text-white'
+                                    : 'text-ink-muted hover:bg-surface hover:text-ink',
+                            )}
+                        >
+                            Saved comparisons
+                        </button>
+                    </div>
+
+                    {/* ── Individual runs tab ────────────────────────────────── */}
+                    {activeTab === 'runs' && view.mode !== 'run-detail' && (
                         <div className="replay-fade-up-delay flex flex-col gap-6">
                             <form
                                 onSubmit={onSearchSubmit}
@@ -210,25 +326,25 @@ export default function History() {
                                 </div>
                             </form>
 
-                            {listError && (
+                            {runListError && (
                                 <div
                                     role="alert"
                                     className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger"
                                 >
-                                    {listError}
+                                    {runListError}
                                 </div>
                             )}
 
-                            {detailError && (
+                            {runDetailError && (
                                 <div
                                     role="alert"
                                     className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger"
                                 >
-                                    {detailError}
+                                    {runDetailError}
                                 </div>
                             )}
 
-                            {listLoading ? (
+                            {runListLoading ? (
                                 <p className="text-sm text-ink-muted">
                                     Loading recorded runs…
                                 </p>
@@ -281,7 +397,7 @@ export default function History() {
                                                                 );
                                                             }}
                                                             disabled={
-                                                                detailLoading
+                                                                runDetailLoading
                                                             }
                                                             className="max-w-[14rem] truncate font-mono text-xs text-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:opacity-50 sm:max-w-xs"
                                                             title={run.run_id}
@@ -318,21 +434,22 @@ export default function History() {
                                 </div>
                             )}
 
-                            {meta && meta.last_page > 1 && (
+                            {runMeta && runMeta.last_page > 1 && (
                                 <div className="flex items-center justify-between gap-3">
                                     <p className="text-xs text-ink-faint">
-                                        Page {meta.current_page} of{' '}
-                                        {meta.last_page} · {meta.total} runs
+                                        Page {runMeta.current_page} of{' '}
+                                        {runMeta.last_page} · {runMeta.total}{' '}
+                                        runs
                                     </p>
                                     <div className="flex gap-2">
                                         <button
                                             type="button"
                                             disabled={
-                                                listLoading ||
-                                                meta.current_page <= 1
+                                                runListLoading ||
+                                                runMeta.current_page <= 1
                                             }
                                             onClick={() =>
-                                                setPage((current) =>
+                                                setRunPage((current) =>
                                                     Math.max(1, current - 1),
                                                 )
                                             }
@@ -343,12 +460,12 @@ export default function History() {
                                         <button
                                             type="button"
                                             disabled={
-                                                listLoading ||
-                                                meta.current_page >=
-                                                    meta.last_page
+                                                runListLoading ||
+                                                runMeta.current_page >=
+                                                    runMeta.last_page
                                             }
                                             onClick={() =>
-                                                setPage(
+                                                setRunPage(
                                                     (current) => current + 1,
                                                 )
                                             }
@@ -360,7 +477,7 @@ export default function History() {
                                 </div>
                             )}
 
-                            {detailLoading && (
+                            {runDetailLoading && (
                                 <p
                                     className="text-sm text-ink-muted"
                                     role="status"
@@ -371,7 +488,7 @@ export default function History() {
                         </div>
                     )}
 
-                    {view.mode === 'detail' && (
+                    {activeTab === 'runs' && view.mode === 'run-detail' && (
                         <div className="replay-fade-up-delay">
                             <HistoricalRunWorkspace
                                 summary={view.summary}
@@ -380,11 +497,211 @@ export default function History() {
                                 onStepChange={setStep}
                                 onBack={() => {
                                     setView({ mode: 'list' });
-                                    setDetailError(null);
+                                    setRunDetailError(null);
                                 }}
                             />
                         </div>
                     )}
+
+                    {/* ── Saved comparisons tab ──────────────────────────────── */}
+                    {activeTab === 'comparisons' &&
+                        view.mode !== 'comparison-detail' && (
+                            <div className="replay-fade-up-delay flex flex-col gap-6">
+                                {compListError && (
+                                    <div
+                                        role="alert"
+                                        className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger"
+                                    >
+                                        {compListError}
+                                    </div>
+                                )}
+
+                                {compDetailError && (
+                                    <div
+                                        role="alert"
+                                        className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger"
+                                    >
+                                        {compDetailError}
+                                    </div>
+                                )}
+
+                                {compListLoading ? (
+                                    <p className="text-sm text-ink-muted">
+                                        Loading saved comparisons…
+                                    </p>
+                                ) : comparisons.length === 0 ? (
+                                    <p
+                                        role="status"
+                                        className="rounded-xl border border-dashed border-line-strong bg-surface-raised/60 px-4 py-8 text-center text-sm text-ink-faint"
+                                    >
+                                        No saved comparisons yet. Run a
+                                        comparison in the Investigation
+                                        Workspace and save it there.
+                                    </p>
+                                ) : (
+                                    <div className="overflow-x-auto rounded-2xl border border-line bg-surface-raised/90">
+                                        <table className="w-full min-w-[40rem] border-collapse text-left text-sm">
+                                            <thead>
+                                                <tr className="border-b border-line text-xs text-ink-faint">
+                                                    <th className="px-4 py-3 font-medium">
+                                                        comparison_id
+                                                    </th>
+                                                    <th className="px-4 py-3 font-medium">
+                                                        Type
+                                                    </th>
+                                                    <th className="px-4 py-3 font-medium">
+                                                        before_run_id
+                                                    </th>
+                                                    <th className="px-4 py-3 font-medium">
+                                                        after_run_id
+                                                    </th>
+                                                    <th className="px-4 py-3 font-medium">
+                                                        Saved
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {comparisons.map(
+                                                    (comparison) => (
+                                                        <tr
+                                                            key={
+                                                                comparison.comparison_id
+                                                            }
+                                                            className="border-b border-line/70 last:border-b-0"
+                                                        >
+                                                            <td className="px-4 py-3 align-top">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        void openComparison(
+                                                                            comparison.comparison_id,
+                                                                        );
+                                                                    }}
+                                                                    disabled={
+                                                                        compDetailLoading
+                                                                    }
+                                                                    className="max-w-[14rem] truncate font-mono text-xs text-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:opacity-50 sm:max-w-xs"
+                                                                    title={
+                                                                        comparison.comparison_id
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        comparison.comparison_id
+                                                                    }
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-4 py-3 align-top font-mono text-xs text-ink-muted">
+                                                                {
+                                                                    comparison.resource_type
+                                                                }
+                                                            </td>
+                                                            <td className="max-w-[10rem] truncate px-4 py-3 align-top font-mono text-xs text-ink-muted">
+                                                                <span
+                                                                    title={
+                                                                        comparison.before_run_id
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        comparison.before_run_id
+                                                                    }
+                                                                </span>
+                                                            </td>
+                                                            <td className="max-w-[10rem] truncate px-4 py-3 align-top font-mono text-xs text-ink-muted">
+                                                                <span
+                                                                    title={
+                                                                        comparison.after_run_id
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        comparison.after_run_id
+                                                                    }
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3 align-top font-mono text-xs text-ink-muted">
+                                                                {formatTimestamp(
+                                                                    comparison.created_at,
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ),
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+
+                                {compMeta && compMeta.last_page > 1 && (
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-xs text-ink-faint">
+                                            Page {compMeta.current_page} of{' '}
+                                            {compMeta.last_page} ·{' '}
+                                            {compMeta.total} comparisons
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                disabled={
+                                                    compListLoading ||
+                                                    compMeta.current_page <= 1
+                                                }
+                                                onClick={() =>
+                                                    setCompPage((current) =>
+                                                        Math.max(
+                                                            1,
+                                                            current - 1,
+                                                        ),
+                                                    )
+                                                }
+                                                className="rounded-lg border border-line bg-surface-raised px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-45"
+                                            >
+                                                Previous
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={
+                                                    compListLoading ||
+                                                    compMeta.current_page >=
+                                                        compMeta.last_page
+                                                }
+                                                onClick={() =>
+                                                    setCompPage(
+                                                        (current) =>
+                                                            current + 1,
+                                                    )
+                                                }
+                                                className="rounded-lg border border-line bg-surface-raised px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-45"
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {compDetailLoading && (
+                                    <p
+                                        className="text-sm text-ink-muted"
+                                        role="status"
+                                    >
+                                        Loading comparison evidence…
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                    {activeTab === 'comparisons' &&
+                        view.mode === 'comparison-detail' && (
+                            <div className="replay-fade-up-delay">
+                                <HistoricalComparisonWorkspace
+                                    comparison={view.comparison}
+                                    step={step}
+                                    onStepChange={setStep}
+                                    onBack={() => {
+                                        setView({ mode: 'list' });
+                                        setCompDetailError(null);
+                                    }}
+                                />
+                            </div>
+                        )}
                 </div>
             </div>
         </>
