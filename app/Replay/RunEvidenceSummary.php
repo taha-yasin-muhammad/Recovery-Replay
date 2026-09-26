@@ -8,7 +8,9 @@ use Illuminate\Support\Collection;
 /**
  * Builds list/detail metadata for a run from persisted ReplayAttempt rows only.
  *
- * Does not invent HTTP bodies, scenario modes, or comparison pairings.
+ * Does not invent HTTP bodies, scenario modes, expected attempt IDs, or
+ * comparison pairings. Safety flags come from PersistedEvidenceEvaluator so
+ * historical views stay aligned with ReplayRunner integrity rules.
  *
  * @phpstan-type RunSummary array{
  *     run_id: string,
@@ -40,66 +42,26 @@ final class RunEvidenceSummary
             ])
             ->values();
 
-        $resourceTypes = $ordered
-            ->pluck('resource_type')
-            ->filter(fn (mixed $type): bool => is_string($type) && $type !== '')
-            ->unique()
-            ->values();
+        $evaluation = PersistedEvidenceEvaluator::evaluateHistorical($ordered);
 
-        // Only report a type when every attempt agrees. Mixed or missing → unavailable.
-        $resourceType = $resourceTypes->count() === 1
-            ? $resourceTypes->first()
-            : null;
-
-        $resourceIds = array_values(
-            $ordered
-                ->map(function (ReplayAttempt $attempt): int {
-                    $identifier = $attempt->resource_id ?? $attempt->order_id;
-
-                    return is_numeric($identifier) ? (int) $identifier : 0;
-                })
-                ->filter(fn (int $id): bool => $id > 0)
-                ->unique()
-                ->sort()
-                ->all(),
-        );
-
-        $incomplete = $ordered->count() < 2;
         $first = $ordered->get(0);
-        $second = $ordered->get(1);
-
-        $reproductionSucceeded = $first instanceof ReplayAttempt
-            && $second instanceof ReplayAttempt
-            && $first->http_status === 503
-            && in_array($second->http_status, [200, 201], true);
-
-        $duplicateResources = count($resourceIds) > 1;
-        $sameResourceOnRetry = count($resourceIds) === 1;
-        $operationSafe = $reproductionSucceeded && $sameResourceOnRetry;
-
-        $safetyResult = match (true) {
-            $incomplete, ! $reproductionSucceeded => 'inconclusive',
-            $operationSafe => 'safe',
-            default => 'unsafe',
-        };
-
         $recordedAt = $first instanceof ReplayAttempt
             ? $first->attempted_at->toIso8601String()
             : null;
 
         return [
             'run_id' => $runId,
-            'resource_type' => $resourceType,
-            'attempt_count' => $ordered->count(),
-            'resource_count' => count($resourceIds),
+            'resource_type' => $evaluation['resource_type'],
+            'attempt_count' => $evaluation['attempt_count'],
+            'resource_count' => $evaluation['resource_count'],
             'recorded_at' => $recordedAt,
-            'reproduction_succeeded' => $reproductionSucceeded,
-            'operation_safe' => $operationSafe,
-            'duplicate_resources' => $duplicateResources,
-            'same_resource_on_retry' => $sameResourceOnRetry,
-            'safety_result' => $safetyResult,
-            'incomplete' => $incomplete,
-            'resource_ids' => $resourceIds,
+            'reproduction_succeeded' => $evaluation['reproduction_succeeded'],
+            'operation_safe' => $evaluation['operation_safe'],
+            'duplicate_resources' => $evaluation['duplicate_resources'],
+            'same_resource_on_retry' => $evaluation['same_resource_on_retry'],
+            'safety_result' => $evaluation['safety_result'],
+            'incomplete' => $evaluation['incomplete'],
+            'resource_ids' => $evaluation['resource_ids'],
         ];
     }
 }

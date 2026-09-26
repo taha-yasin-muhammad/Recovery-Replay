@@ -76,6 +76,23 @@ class ProtectedReservationController extends Controller
                 ], 409);
             }
 
+            $httpStatus = 200;
+
+            if ($request->filled('run_id')) {
+                $attemptId = $request->input('attempt_id') ?: (string) Str::uuid();
+
+                ReplayAttempt::create([
+                    'run_id' => $request->input('run_id'),
+                    'attempt_id' => $attemptId,
+                    'operation_id' => $operationId,
+                    'resource_type' => 'reservation',
+                    'resource_id' => $reservation->id,
+                    'http_status' => $httpStatus,
+                    'order_count_after' => Reservation::where('operation_id', $operationId)->count(),
+                    'attempted_at' => now(),
+                ]);
+            }
+
             return response()->json(['reservation_id' => $reservation->id, 'status' => $reservation->status], 200);
         }
 

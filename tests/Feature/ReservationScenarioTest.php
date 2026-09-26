@@ -6,6 +6,7 @@ use App\Replay\ReplayRunner;
 use App\Replay\Scenarios\ProtectedReservationScenario;
 use App\Replay\Scenarios\VulnerableReservationScenario;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -355,4 +356,107 @@ test('replay run endpoint returns reservations for reservation run', function ()
         ->assertJsonCount(2, 'attempts')
         ->assertJsonCount(2, 'reservations')
         ->assertJsonCount(0, 'orders');
+});
+
+// Unique-constraint conflict path for protected reservations (deterministic race simulation).
+
+test('unique-constraint conflict path records reservation replay evidence for a matching retry', function () {
+    $runId = 'run-res-unique-ev';
+    $operationId = 'op-res-unique-ev';
+    $idempotencyKey = 'idem-res-unique-ev';
+
+    Reservation::creating(function (Reservation $reservation) use ($idempotencyKey, $operationId): void {
+        if ($reservation->idempotency_key !== $idempotencyKey) {
+            return;
+        }
+
+        static $injected = false;
+
+        if ($injected) {
+            return;
+        }
+
+        $injected = true;
+
+        DB::table('reservations')->insert([
+            'operation_id' => $operationId,
+            'idempotency_key' => $idempotencyKey,
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    try {
+        $response = $this->postJson('/api/reservations/protected', [
+            'operation_id' => $operationId,
+            'idempotency_key' => $idempotencyKey,
+            'run_id' => $runId,
+            'attempt_id' => 'res-unique-attempt-1',
+        ]);
+
+        $response->assertStatus(200);
+
+        $reservationId = Reservation::where('idempotency_key', $idempotencyKey)->value('id');
+
+        $response->assertJsonFragment(['reservation_id' => $reservationId, 'status' => 'pending']);
+
+        $this->assertDatabaseCount('reservations', 1);
+        $this->assertDatabaseHas('replay_attempts', [
+            'run_id' => $runId,
+            'attempt_id' => 'res-unique-attempt-1',
+            'operation_id' => $operationId,
+            'resource_type' => 'reservation',
+            'resource_id' => $reservationId,
+            'http_status' => 200,
+        ]);
+        expect(ReplayAttempt::where('attempt_id', 'res-unique-attempt-1')->value('order_id'))->toBeNull();
+    } finally {
+        Reservation::flushEventListeners();
+    }
+});
+
+test('unique-constraint conflict path returns 409 without reservation evidence when operation_id differs', function () {
+    $runId = 'run-res-unique-409';
+    $idempotencyKey = 'idem-res-unique-409';
+
+    Reservation::creating(function (Reservation $reservation) use ($idempotencyKey): void {
+        if ($reservation->idempotency_key !== $idempotencyKey) {
+            return;
+        }
+
+        static $injected = false;
+
+        if ($injected) {
+            return;
+        }
+
+        $injected = true;
+
+        DB::table('reservations')->insert([
+            'operation_id' => 'op-res-winner-other',
+            'idempotency_key' => $idempotencyKey,
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    try {
+        $response = $this->postJson('/api/reservations/protected', [
+            'operation_id' => 'op-res-loser',
+            'idempotency_key' => $idempotencyKey,
+            'run_id' => $runId,
+            'attempt_id' => 'res-unique-conflict-attempt',
+        ]);
+
+        $response->assertStatus(409)
+            ->assertJsonFragment(['message' => 'This idempotency key was used for a different operation.']);
+
+        $this->assertDatabaseCount('reservations', 1);
+        $this->assertDatabaseHas('reservations', ['operation_id' => 'op-res-winner-other']);
+        $this->assertDatabaseCount('replay_attempts', 0);
+    } finally {
+        Reservation::flushEventListeners();
+    }
 });

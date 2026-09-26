@@ -77,6 +77,24 @@ class ProtectedCheckoutController extends Controller
                 ], 409);
             }
 
+            $httpStatus = 200;
+
+            if ($request->filled('run_id')) {
+                $attemptId = $request->input('attempt_id') ?: (string) Str::uuid();
+
+                ReplayAttempt::create([
+                    'run_id' => $request->input('run_id'),
+                    'attempt_id' => $attemptId,
+                    'operation_id' => $operationId,
+                    'order_id' => $order->id,
+                    'resource_type' => 'order',
+                    'resource_id' => $order->id,
+                    'http_status' => $httpStatus,
+                    'order_count_after' => Order::where('operation_id', $operationId)->count(),
+                    'attempted_at' => now(),
+                ]);
+            }
+
             return response()->json(['order_id' => $order->id, 'status' => $order->status], 200);
         }
 

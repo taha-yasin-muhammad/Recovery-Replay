@@ -3,6 +3,7 @@
 use App\Models\Order;
 use App\Models\ReplayAttempt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -233,4 +234,109 @@ test('409 does not create a second order', function () {
     $this->assertDatabaseCount('orders', 1);
     $this->assertDatabaseHas('orders', ['operation_id' => 'op-a']);
     $this->assertDatabaseMissing('orders', ['operation_id' => 'op-b']);
+});
+
+// Unique-constraint conflict path: lookup missed, insert lost the race.
+// Deterministic simulation via Order::creating — not a live concurrency stress test.
+
+test('unique-constraint conflict path records replay evidence for a matching retry', function () {
+    $runId = 'run-checkout-unique-ev';
+    $operationId = 'op-checkout-unique-ev';
+    $idempotencyKey = 'idem-checkout-unique-ev';
+
+    Order::creating(function (Order $order) use ($idempotencyKey, $operationId): void {
+        if ($order->idempotency_key !== $idempotencyKey) {
+            return;
+        }
+
+        static $injected = false;
+
+        if ($injected) {
+            return;
+        }
+
+        $injected = true;
+
+        // Competing row wins the unique key before this insert commits.
+        DB::table('orders')->insert([
+            'operation_id' => $operationId,
+            'idempotency_key' => $idempotencyKey,
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    try {
+        $response = $this->postJson('/api/checkout/protected', [
+            'operation_id' => $operationId,
+            'idempotency_key' => $idempotencyKey,
+            'run_id' => $runId,
+            'attempt_id' => 'unique-attempt-1',
+        ]);
+
+        $response->assertStatus(200);
+
+        $orderId = Order::where('idempotency_key', $idempotencyKey)->value('id');
+
+        $response->assertJsonFragment(['order_id' => $orderId, 'status' => 'pending']);
+
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertDatabaseHas('replay_attempts', [
+            'run_id' => $runId,
+            'attempt_id' => 'unique-attempt-1',
+            'operation_id' => $operationId,
+            'order_id' => $orderId,
+            'resource_type' => 'order',
+            'resource_id' => $orderId,
+            'http_status' => 200,
+        ]);
+    } finally {
+        Order::flushEventListeners();
+    }
+});
+
+test('unique-constraint conflict path returns 409 without evidence when operation_id differs', function () {
+    $runId = 'run-checkout-unique-409';
+    $idempotencyKey = 'idem-checkout-unique-409';
+
+    Order::creating(function (Order $order) use ($idempotencyKey): void {
+        if ($order->idempotency_key !== $idempotencyKey) {
+            return;
+        }
+
+        static $injected = false;
+
+        if ($injected) {
+            return;
+        }
+
+        $injected = true;
+
+        DB::table('orders')->insert([
+            'operation_id' => 'op-winner-other',
+            'idempotency_key' => $idempotencyKey,
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    try {
+        $response = $this->postJson('/api/checkout/protected', [
+            'operation_id' => 'op-loser',
+            'idempotency_key' => $idempotencyKey,
+            'run_id' => $runId,
+            'attempt_id' => 'unique-conflict-attempt',
+        ]);
+
+        $response->assertStatus(409)
+            ->assertJsonFragment(['message' => 'This idempotency key was used for a different operation.']);
+
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertDatabaseHas('orders', ['operation_id' => 'op-winner-other']);
+        $this->assertDatabaseCount('replay_attempts', 0);
+    } finally {
+        Order::flushEventListeners();
+    }
 });

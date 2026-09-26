@@ -1,8 +1,4 @@
-import {
-    deriveVerification,
-    persistedCount,
-    persistedNoun,
-} from '@/components/replay/evidence';
+import { persistedCount, persistedNoun } from '@/components/replay/evidence';
 import type {
     PanelState,
     RunSummary,
@@ -32,7 +28,8 @@ export function HistoricalVerdict({
     state: Extract<PanelState, { phase: 'done' }>;
 }) {
     const domain = domainFromResourceType(summary.resource_type);
-    const verification = deriveVerification(state.data.attempts);
+    // Authoritative flags come from the API summary (PersistedEvidenceEvaluator).
+    // Do not re-derive safety from attempts here — that can contradict history.
     const count =
         domain === null
             ? summary.resource_count
@@ -59,10 +56,22 @@ export function HistoricalVerdict({
                     role="status"
                     className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
                 >
-                    Incomplete evidence — fewer than two attempts were recorded.
-                    Safety result is inconclusive.
+                    Incomplete or contradictory evidence — the expected
+                    two-attempt sequence cannot be established. Safety result is
+                    inconclusive.
                 </div>
             )}
+
+            {!summary.incomplete &&
+                summary.safety_result === 'inconclusive' && (
+                    <div
+                        role="status"
+                        className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
+                    >
+                        Complete identity evidence was recorded, but the HTTP
+                        sequence does not support a safe or unsafe verdict.
+                    </div>
+                )}
 
             <article className="rounded-2xl border border-l-[3px] border-line border-l-accent bg-surface-raised px-4 py-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -89,9 +98,9 @@ export function HistoricalVerdict({
                         {resourceLabel}
                     </li>
                     <li className="text-sm leading-snug text-ink">
-                        {verification.duplicate_resources
+                        {summary.duplicate_resources
                             ? 'Duplicate resources recorded'
-                            : verification.same_resource_on_retry
+                            : summary.same_resource_on_retry
                               ? 'Same resource on retry'
                               : 'Resource relation unclear from evidence'}
                     </li>
@@ -108,14 +117,12 @@ export function HistoricalVerdict({
                         <dd
                             className={cn(
                                 'font-mono text-xs font-semibold',
-                                verification.reproduction_succeeded
+                                summary.reproduction_succeeded
                                     ? 'text-safe'
                                     : 'text-ink',
                             )}
                         >
-                            {verification.reproduction_succeeded
-                                ? 'true'
-                                : 'false'}
+                            {summary.reproduction_succeeded ? 'true' : 'false'}
                         </dd>
                     </div>
                     <div className="flex items-baseline justify-between gap-3 py-1.5">
@@ -125,12 +132,12 @@ export function HistoricalVerdict({
                         <dd
                             className={cn(
                                 'font-mono text-xs font-semibold',
-                                verification.operation_safe
+                                summary.operation_safe
                                     ? 'text-safe'
                                     : 'text-danger',
                             )}
                         >
-                            {verification.operation_safe ? 'true' : 'false'}
+                            {summary.operation_safe ? 'true' : 'false'}
                         </dd>
                     </div>
                 </dl>

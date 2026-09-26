@@ -13,6 +13,14 @@ use Illuminate\Support\Str;
  * After both attempts complete, it loads the recorded evidence from the
  * database and evaluates the expected outcome per scenario contract.
  *
+ * Evidence-completeness rules (fail-closed):
+ *   - Exactly two ReplayAttempt rows must be persisted for the run.
+ *   - One row must match the first attempt ID; the other must match the second.
+ *   - HTTP statuses are read from persisted rows, not from live responses.
+ *   - Both rows must carry a non-empty resource_type and a positive resource_id.
+ *   - resource_type must be identical across the two expected attempts.
+ *   - Any deviation produces operation_safe=false and verdict=INCONCLUSIVE.
+ *
  * @phpstan-type RunReport array{
  *     run_id: string,
  *     scenario: string,
@@ -45,60 +53,101 @@ class ReplayRunner
         $attemptId2 = 'attempt-2-'.Str::random(6);
 
         // Attempt 1: inject a fault so the server returns 503 after persisting.
-        $first = $this->scenario->attempt($runId, $operationId, $attemptId1, injectFault: true);
+        $this->scenario->attempt($runId, $operationId, $attemptId1, injectFault: true);
 
         // Attempt 2: client retries the same logical operation.
-        $second = $this->scenario->attempt($runId, $operationId, $attemptId2, injectFault: false);
+        $this->scenario->attempt($runId, $operationId, $attemptId2, injectFault: false);
 
-        return $this->buildReport($runId, $first, $second);
+        return $this->buildReport($runId, $attemptId1, $attemptId2);
     }
 
     /**
-     * @param  array<string, mixed>  $first
-     * @param  array<string, mixed>  $second
      * @return RunReport
      */
-    private function buildReport(string $runId, array $first, array $second): array
+    private function buildReport(string $runId, string $attemptId1, string $attemptId2): array
     {
         $attempts = ReplayAttempt::where('run_id', $runId)
             ->orderBy('attempted_at')
             ->get();
 
-        // Missing evidence — cannot evaluate any outcome.
+        // ----------------------------------------------------------------
+        // Evidence-completeness gate — fail closed on any deviation.
+        // ----------------------------------------------------------------
+
+        // Gate 1: No evidence at all.
         if ($attempts->isEmpty()) {
-            return [
-                'run_id' => $runId,
-                'scenario' => $this->scenario->label(),
-                'attempts' => [],
-                'resource_ids' => [],
-                'duplicate_resources' => false,
-                'same_resource_on_retry' => false,
-                'order_ids' => [],
-                'duplicate_orders' => false,
-                'same_order_on_retry' => false,
-                'reproduction_succeeded' => false,
-                'operation_safe' => false,
-                'verdict' => 'INCONCLUSIVE — no evidence recorded for this run',
-            ];
+            return $this->inconclusiveReport($runId, [], 'no evidence recorded for this run');
         }
 
-        // Generic resource identity: use resource_id when available, fall back
-        // to order_id for evidence rows recorded before the migration.
-        $resourceIds = array_values(
-            $attempts
-                ->map(function (ReplayAttempt $attempt): int {
-                    $identifier = $attempt->resource_id ?? $attempt->order_id;
+        // Gate 2: Wrong number of persisted rows (need exactly 2).
+        if ($attempts->count() !== 2) {
+            return $this->inconclusiveReport(
+                $runId,
+                $attempts->all(),
+                sprintf(
+                    'expected 2 persisted attempt rows, found %d',
+                    $attempts->count(),
+                ),
+            );
+        }
 
-                    return is_numeric($identifier) ? (int) $identifier : 0;
-                })
-                ->filter(fn (int $id): bool => $id > 0)
-                ->unique()
-                ->sort()
-                ->all(),
+        // Gate 3: The two rows must carry the expected attempt IDs — one each,
+        // no duplicates, no cross-contamination from another run.
+        $persistedIds = $attempts->pluck('attempt_id')->all();
+
+        $hasFirst = in_array($attemptId1, $persistedIds, strict: true);
+        $hasSecond = in_array($attemptId2, $persistedIds, strict: true);
+
+        if (! $hasFirst || ! $hasSecond) {
+            return $this->inconclusiveReport(
+                $runId,
+                $attempts->all(),
+                sprintf(
+                    'persisted attempt IDs [%s] do not match expected IDs [%s, %s]',
+                    implode(', ', $persistedIds),
+                    $attemptId1,
+                    $attemptId2,
+                ),
+            );
+        }
+
+        // Gate 4: Duplicate attempt IDs within the run (two rows for the same attempt).
+        if (count(array_unique($persistedIds)) !== 2) {
+            return $this->inconclusiveReport(
+                $runId,
+                $attempts->all(),
+                sprintf(
+                    'duplicate attempt IDs detected in persisted rows: [%s]',
+                    implode(', ', $persistedIds),
+                ),
+            );
+        }
+
+        // Identify the two attempt rows by their persisted attempt_id.
+        /** @var ReplayAttempt $firstAttempt */
+        $firstAttempt = $attempts->firstWhere('attempt_id', $attemptId1);
+
+        /** @var ReplayAttempt $secondAttempt */
+        $secondAttempt = $attempts->firstWhere('attempt_id', $attemptId2);
+
+        // Gate 5: Resource identity must be present, valid, and type-consistent.
+        // A missing/invalid identity on either row must not collapse into a
+        // false "same resource" PASS (e.g. one null filtered away leaving one id).
+        $identityFailure = PersistedEvidenceEvaluator::resourceIdentityFailure(
+            $firstAttempt,
+            $secondAttempt,
         );
 
-        $duplicateResources = count($resourceIds) > 1;
-        $sameResourceOnRetry = count($resourceIds) === 1;
+        if ($identityFailure !== null) {
+            return $this->inconclusiveReport($runId, $attempts->all(), $identityFailure);
+        }
+
+        // ----------------------------------------------------------------
+        // Evidence is complete. Derive all outcomes from persisted rows only.
+        // Shared with historical evaluation so CLI / history cannot disagree.
+        // ----------------------------------------------------------------
+
+        $outcome = PersistedEvidenceEvaluator::evaluateCompletePair($firstAttempt, $secondAttempt);
 
         // Legacy checkout fields — populated only when all attempts are orders.
         $allOrders = $attempts->every(fn ($a) => ($a->resource_type ?? 'order') === 'order');
@@ -121,22 +170,13 @@ class ReplayRunner
         $duplicateOrders = count($orderIds) > 1;
         $sameOrderOnRetry = count($orderIds) === 1;
 
-        $firstStatus = $first['http_status'];
-        $secondStatus = $second['http_status'];
-
-        // reproduction_succeeded: the two-attempt sequence played out as the
-        // scenario was designed to demonstrate (503 on first, success on second).
-        $reproductionSucceeded = $firstStatus === 503
-            && in_array($secondStatus, [200, 201], strict: true);
-
-        // operation_safe: the business operation is safe — a retry after a 503
-        // did not produce a duplicate. True only when idempotency held.
-        $operationSafe = $reproductionSucceeded && $sameResourceOnRetry;
+        $firstStatus = $firstAttempt->http_status;
+        $secondStatus = $secondAttempt->http_status;
 
         $verdict = match (true) {
-            ! $reproductionSucceeded => 'INCONCLUSIVE — unexpected HTTP sequence ('.$firstStatus.' / '.$secondStatus.')',
-            $operationSafe => 'PASS — retry returned the same resource (idempotency held)',
-            $duplicateResources => 'EXPECTED FAILURE — duplicate resources created (no idempotency protection)',
+            ! $outcome['reproduction_succeeded'] => 'INCONCLUSIVE — unexpected HTTP sequence ('.$firstStatus.' / '.$secondStatus.')',
+            $outcome['operation_safe'] => 'PASS — retry returned the same resource (idempotency held)',
+            $outcome['duplicate_resources'] => 'EXPECTED FAILURE — duplicate resources created (no idempotency protection)',
             default => 'INCONCLUSIVE — unexpected outcome',
         };
 
@@ -152,15 +192,51 @@ class ReplayRunner
                 'order_count_after' => $attempt->order_count_after,
                 'attempted_at' => $attempt->attempted_at->toIso8601String(),
             ])->all()),
-            'resource_ids' => $resourceIds,
-            'duplicate_resources' => $duplicateResources,
-            'same_resource_on_retry' => $sameResourceOnRetry,
+            'resource_ids' => $outcome['resource_ids'],
+            'duplicate_resources' => $outcome['duplicate_resources'],
+            'same_resource_on_retry' => $outcome['same_resource_on_retry'],
             'order_ids' => $orderIds,
             'duplicate_orders' => $duplicateOrders,
             'same_order_on_retry' => $sameOrderOnRetry,
-            'reproduction_succeeded' => $reproductionSucceeded,
-            'operation_safe' => $operationSafe,
+            'reproduction_succeeded' => $outcome['reproduction_succeeded'],
+            'operation_safe' => $outcome['operation_safe'],
             'verdict' => $verdict,
+        ];
+    }
+
+    /**
+     * Build an INCONCLUSIVE report for any evidence-completeness failure.
+     *
+     * @param  array<int, ReplayAttempt>  $rawAttempts
+     * @return RunReport
+     */
+    private function inconclusiveReport(string $runId, array $rawAttempts, string $reason): array
+    {
+        $attempts = array_values(
+            array_map(fn (ReplayAttempt $attempt): array => [
+                'attempt_id' => $attempt->attempt_id,
+                'http_status' => $attempt->http_status,
+                'resource_type' => $attempt->resource_type,
+                'resource_id' => $attempt->resource_id,
+                'order_id' => $attempt->order_id,
+                'order_count_after' => $attempt->order_count_after,
+                'attempted_at' => $attempt->attempted_at->toIso8601String(),
+            ], $rawAttempts),
+        );
+
+        return [
+            'run_id' => $runId,
+            'scenario' => $this->scenario->label(),
+            'attempts' => $attempts,
+            'resource_ids' => [],
+            'duplicate_resources' => false,
+            'same_resource_on_retry' => false,
+            'order_ids' => [],
+            'duplicate_orders' => false,
+            'same_order_on_retry' => false,
+            'reproduction_succeeded' => false,
+            'operation_safe' => false,
+            'verdict' => 'INCONCLUSIVE — '.$reason,
         ];
     }
 }

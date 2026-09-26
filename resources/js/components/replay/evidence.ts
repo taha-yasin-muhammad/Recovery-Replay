@@ -8,9 +8,8 @@ import type {
 } from '@/components/replay/types';
 
 /**
- * Mirrors App\Replay\ReplayRunner: resource ids come from resource_id, with
- * order_id only when resource_id is null. Flags use that id set plus the
- * recorded HTTP statuses in display order.
+ * Display helper: prefer resource_id, fall back to order_id for older rows.
+ * Safety evaluation uses strictResourceIdOf — never this fallback alone.
  */
 export function resourceIdOf(attempt: ReplayAttempt): number | null {
     const raw = attempt.resource_id ?? attempt.order_id;
@@ -20,6 +19,64 @@ export function resourceIdOf(attempt: ReplayAttempt): number | null {
     }
 
     return null;
+}
+
+/**
+ * Mirrors App\Replay\PersistedEvidenceEvaluator: only a positive resource_id
+ * counts for integrity / safety evaluation.
+ */
+export function strictResourceIdOf(attempt: ReplayAttempt): number | null {
+    const raw = attempt.resource_id;
+
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) {
+        return raw;
+    }
+
+    return null;
+}
+
+function hasValidResourceType(attempt: ReplayAttempt): boolean {
+    return (
+        typeof attempt.resource_type === 'string' &&
+        attempt.resource_type !== ''
+    );
+}
+
+/**
+ * Fail-closed evidence gates shared with PersistedEvidenceEvaluator historical
+ * evaluation (without inventing expected live attempt IDs).
+ */
+export function evidenceSequenceIsComplete(attempts: ReplayAttempt[]): boolean {
+    if (attempts.length !== 2) {
+        return false;
+    }
+
+    const [first, second] = attempts;
+
+    if (!first || !second) {
+        return false;
+    }
+
+    if (first.attempt_id === second.attempt_id) {
+        return false;
+    }
+
+    if (!hasValidResourceType(first) || !hasValidResourceType(second)) {
+        return false;
+    }
+
+    if (first.resource_type !== second.resource_type) {
+        return false;
+    }
+
+    if (
+        strictResourceIdOf(first) === null ||
+        strictResourceIdOf(second) === null
+    ) {
+        return false;
+    }
+
+    return true;
 }
 
 export function orderAttempts(attempts: ReplayAttempt[]): ReplayAttempt[] {
@@ -51,24 +108,32 @@ export function attemptsShareTimestamp(attempts: ReplayAttempt[]): boolean {
 
 export function deriveVerification(attempts: ReplayAttempt[]): Verification {
     const ordered = orderAttempts(attempts);
+
+    if (!evidenceSequenceIsComplete(ordered)) {
+        return {
+            reproduction_succeeded: false,
+            operation_safe: false,
+            duplicate_resources: false,
+            same_resource_on_retry: false,
+            resource_ids: [],
+        };
+    }
+
+    const first = ordered[0]!;
+    const second = ordered[1]!;
     const resourceIds = [
         ...new Set(
-            ordered
-                .map((attempt) => resourceIdOf(attempt))
-                .filter((id): id is number => id !== null),
+            [strictResourceIdOf(first), strictResourceIdOf(second)].filter(
+                (id): id is number => id !== null,
+            ),
         ),
     ].sort((left, right) => left - right);
 
     const duplicateResources = resourceIds.length > 1;
     const sameResourceOnRetry = resourceIds.length === 1;
-    const first = ordered[0];
-    const second = ordered[1];
-    const reproductionSucceeded = Boolean(
-        first &&
-        second &&
+    const reproductionSucceeded =
         first.http_status === 503 &&
-        (second.http_status === 200 || second.http_status === 201),
-    );
+        (second.http_status === 200 || second.http_status === 201);
 
     return {
         reproduction_succeeded: reproductionSucceeded,
@@ -103,6 +168,10 @@ export function explainVerification(attempts: ReplayAttempt[]): string {
 
     if (ordered.length === 0) {
         return 'No replay attempts were recorded. reproduction_succeeded is false and operation_safe is false.';
+    }
+
+    if (!evidenceSequenceIsComplete(ordered)) {
+        return 'Persisted evidence is incomplete or contradictory, so reproduction_succeeded is false and operation_safe is false.';
     }
 
     const narrative = ordered
