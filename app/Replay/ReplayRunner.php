@@ -7,7 +7,7 @@ use Illuminate\Support\Str;
 
 /**
  * Executes a ReplayScenario in two passes:
- *   1. First attempt with fault injection (simulates a 503 mid-flight).
+ *   1. First attempt with fault injection (simulated HTTP 503 after persistence).
  *   2. Second attempt without fault (the client retry).
  *
  * After both attempts complete, it loads the recorded evidence from the

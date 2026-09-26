@@ -13,11 +13,11 @@ The disposable app lived **outside** this repository
 
 1. Created a separate minimal Laravel application with an Invoice create operation.
 2. Copied unchanged from Recovery Replay (byte-identical hashes confirmed for the core):
-   - `ReplayScenario`
-   - `ReplayRunner`
-   - `PersistedEvidenceEvaluator`
-   - `ReplayAttempt`
-   - `SimulatedPersistenceFault`
+    - `ReplayScenario`
+    - `ReplayRunner`
+    - `PersistedEvidenceEvaluator`
+    - `ReplayAttempt`
+    - `SimulatedPersistenceFault`
 3. Added Invoice model/migration, instrumented controller (local/testing only),
    scenarios, and an adapted `replay:run` command map.
 4. Used a disposable SQLite database in the spike app (not the RR database).
@@ -55,14 +55,14 @@ The disposable app lived **outside** this repository
 
 ## Integration reality
 
-| Claim | Supported? |
-| ----- | ---------- |
-| Domain-generic core works on Invoice without core changes | Yes |
-| Copy + endpoint instrumentation is a viable path | Yes |
-| Recovery Replay is a drop-in Composer package | **No** |
-| Zero-copy / remote / production adoption | **Unverified** |
-| Demo UI / history / comparison ported | **Unverified** |
-| Real brownfield Invoice complexity | **Unverified** (fresh minimal app) |
+| Claim                                                     | Supported?                         |
+| --------------------------------------------------------- | ---------------------------------- |
+| Domain-generic core works on Invoice without core changes | Yes                                |
+| Copy + endpoint instrumentation is a viable path          | Yes                                |
+| Recovery Replay is a drop-in Composer package             | **No**                             |
+| Zero-copy / remote / production adoption                  | **Unverified**                     |
+| Demo UI / history / comparison ported                     | **Unverified**                     |
+| Real brownfield Invoice complexity                        | **Unverified** (fresh minimal app) |
 
 Integration inconveniences observed (not blockers for the spike):
 

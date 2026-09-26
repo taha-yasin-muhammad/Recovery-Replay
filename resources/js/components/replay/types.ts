@@ -69,6 +69,8 @@ export interface Verification {
     duplicate_resources: boolean;
     same_resource_on_retry: boolean;
     resource_ids: number[];
+    /** Mirrors PersistedEvidenceEvaluator safety_result — not derived from UI text. */
+    safety_result: SafetyResult;
 }
 
 export type ResourceRelation = 'initial' | 'reused' | 'new' | 'unrecorded';

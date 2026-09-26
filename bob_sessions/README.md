@@ -3,10 +3,10 @@
 Hackathon evidence collected for Recovery Replay. Only verified artifacts
 are stored here. Missing items are listed explicitly.
 
-| Folder | Contents |
-| ------ | -------- |
+| Folder                                     | Contents                                        |
+| ------------------------------------------ | ----------------------------------------------- |
 | [`value-measurement/`](value-measurement/) | Controlled Checkout timing experiment CSV + log |
-| [`external-adoption/`](external-adoption/) | Summary of the separate Laravel Invoice spike |
+| [`external-adoption/`](external-adoption/) | Summary of the separate Laravel Invoice spike   |
 
 ## Missing (do not invent)
 

@@ -10,22 +10,22 @@ Last audited against the local tree while preparing submission docs
 
 ## Checklist
 
-| Area | Status | Notes |
-| ---- | ------ | ----- |
-| README matches current functionality | **Updated** | Workflow, env lock, `/demo`, scenario instrumentation, non-package stance |
-| Demo instructions | **Present** | `composer setup`, `composer dev`, open `/demo` and `/demo/history` |
-| Measurement document | **Present** | [`docs/MEASUREMENT.md`](MEASUREMENT.md) |
-| External adoption evidence summary | **Present** | [`bob_sessions/external-adoption/SUMMARY.md`](../bob_sessions/external-adoption/SUMMARY.md) |
-| Measurement CSV / log in repo | **Present** | [`bob_sessions/value-measurement/`](../bob_sessions/value-measurement/) |
-| Public GitHub repository | **Present (remote)** | `https://github.com/taha-yasin-muhammad/Recovery-Replay.git` — confirm visibility is public in GitHub settings before submission |
-| CI workflows in repo | **Present** | `.github/workflows/tests.yml`, `replay-regression.yml` |
-| CI green on HEAD used for experiments | **Verified earlier** | On `62642f4`, both `tests` and `recovery-replay regression` succeeded (checked during Invoice spike). Re-confirm on GitHub Actions before final submit if new commits land |
-| Test instructions | **Present** | `composer ci:check`, `php artisan test --compact`, local replay regression steps in README |
-| `bob_sessions` evidence folder | **Partial** | Inventory below — video and some spike artifacts still missing |
-| Demo video | **MISSING** | No recording in this repository |
-| Invoice spike app inside this repo | **Intentionally absent** | Spike lived outside the repo (`D:\2026\invoice-replay-spike`); only the summary is checked in |
-| Composer package / Packagist | **Not claimed** | Explicitly unsupported |
-| Production / remote network-failure support | **Not claimed** | Explicitly unsupported |
+| Area                                        | Status                   | Notes                                                                                                                                                                      |
+| ------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| README matches current functionality        | **Updated**              | Workflow, env lock, `/demo`, scenario instrumentation, non-package stance                                                                                                  |
+| Demo instructions                           | **Present**              | `composer setup`, `composer dev`, open `/demo` and `/demo/history`                                                                                                         |
+| Measurement document                        | **Present**              | [`docs/MEASUREMENT.md`](MEASUREMENT.md)                                                                                                                                    |
+| External adoption evidence summary          | **Present**              | [`bob_sessions/external-adoption/SUMMARY.md`](../bob_sessions/external-adoption/SUMMARY.md)                                                                                |
+| Measurement CSV / log in repo               | **Present**              | [`bob_sessions/value-measurement/`](../bob_sessions/value-measurement/)                                                                                                    |
+| Public GitHub repository                    | **Present (remote)**     | `https://github.com/taha-yasin-muhammad/Recovery-Replay.git` — confirm visibility is public in GitHub settings before submission                                           |
+| CI workflows in repo                        | **Present**              | `.github/workflows/tests.yml`, `replay-regression.yml`                                                                                                                     |
+| CI green on HEAD used for experiments       | **Verified earlier**     | On `62642f4`, both `tests` and `recovery-replay regression` succeeded (checked during Invoice spike). Re-confirm on GitHub Actions before final submit if new commits land |
+| Test instructions                           | **Present**              | `composer ci:check`, `php artisan test --compact`, local replay regression steps in README                                                                                 |
+| `bob_sessions` evidence folder              | **Partial**              | Inventory below — video and some spike artifacts still missing                                                                                                             |
+| Demo video                                  | **MISSING**              | No recording in this repository                                                                                                                                            |
+| Invoice spike app inside this repo          | **Intentionally absent** | Spike lived outside the repo (`D:\2026\invoice-replay-spike`); only the summary is checked in                                                                              |
+| Composer package / Packagist                | **Not claimed**          | Explicitly unsupported                                                                                                                                                     |
+| Production / remote network-failure support | **Not claimed**          | Explicitly unsupported                                                                                                                                                     |
 
 ---
 
@@ -66,15 +66,15 @@ This audit did **not** commit or push.
 
 ## `bob_sessions` inventory
 
-| Path | Status |
-| ---- | ------ |
-| `bob_sessions/README.md` | Present (this inventory’s index) |
-| `bob_sessions/value-measurement/results.csv` | Present — real measured trials |
-| `bob_sessions/value-measurement/log.txt` | Present — real run log |
-| `bob_sessions/external-adoption/SUMMARY.md` | Present — Invoice spike findings |
-| Demo video (e.g. `bob_sessions/demo/*`) | **MISSING** |
-| Full Invoice spike application tree | **Not in this repo** (external disposable app) |
-| Screenshots / slide deck | **MISSING** (none found) |
+| Path                                         | Status                                         |
+| -------------------------------------------- | ---------------------------------------------- |
+| `bob_sessions/README.md`                     | Present (this inventory’s index)               |
+| `bob_sessions/value-measurement/results.csv` | Present — real measured trials                 |
+| `bob_sessions/value-measurement/log.txt`     | Present — real run log                         |
+| `bob_sessions/external-adoption/SUMMARY.md`  | Present — Invoice spike findings               |
+| Demo video (e.g. `bob_sessions/demo/*`)      | **MISSING**                                    |
+| Full Invoice spike application tree          | **Not in this repo** (external disposable app) |
+| Screenshots / slide deck                     | **MISSING** (none found)                       |
 
 ---
 

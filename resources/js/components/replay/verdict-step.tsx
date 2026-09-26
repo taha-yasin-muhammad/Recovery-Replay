@@ -26,29 +26,28 @@ function VerdictCard({
     const resourceLabel =
         count === 1 ? `1 ${noun.slice(0, -1)}` : `${count} ${noun}`;
 
-    const outcomeLines = isVulnerable
-        ? [
-              resourceLabel,
-              verification.duplicate_resources
-                  ? 'Duplicate detected'
-                  : verification.same_resource_on_retry
-                    ? 'Same resource on retry'
-                    : 'No clear duplicate pattern',
-              verification.operation_safe
-                  ? 'Operation safe'
-                  : 'Operation unsafe',
-          ]
-        : [
-              resourceLabel,
-              verification.same_resource_on_retry
-                  ? 'Existing resource reused'
-                  : verification.duplicate_resources
-                    ? 'Duplicate detected'
-                    : 'Resource relation unclear',
-              verification.operation_safe
-                  ? 'Operation safe for the tested retry scenario'
-                  : 'Operation unsafe',
-          ];
+    const relationLine = isVulnerable
+        ? verification.duplicate_resources
+            ? 'Duplicate detected'
+            : verification.same_resource_on_retry
+              ? 'Same resource on retry'
+              : 'No clear duplicate pattern'
+        : verification.same_resource_on_retry
+          ? 'Existing resource reused'
+          : verification.duplicate_resources
+            ? 'Duplicate detected'
+            : 'Resource relation unclear';
+
+    const safetyLine =
+        verification.safety_result === 'safe'
+            ? isVulnerable
+                ? 'Operation safe'
+                : 'Operation safe for the tested retry scenario'
+            : verification.safety_result === 'unsafe'
+              ? 'Operation unsafe'
+              : 'Inconclusive — evidence does not support a safety conclusion';
+
+    const outcomeLines = [resourceLabel, relationLine, safetyLine];
 
     return (
         <article
@@ -70,10 +69,32 @@ function VerdictCard({
                 >
                     {isVulnerable ? 'Before' : 'After'}
                 </span>
+                <span
+                    className={cn(
+                        'rounded-md px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide uppercase',
+                        verification.safety_result === 'safe' &&
+                            'bg-safe-soft text-safe',
+                        verification.safety_result === 'unsafe' &&
+                            'bg-danger-soft text-danger',
+                        verification.safety_result === 'inconclusive' &&
+                            'bg-warn-soft text-warn',
+                    )}
+                >
+                    {verification.safety_result}
+                </span>
                 <h3 className="text-sm font-semibold text-ink">
                     {isVulnerable ? 'Vulnerable' : 'Protected'}
                 </h3>
             </div>
+            {verification.safety_result === 'inconclusive' && (
+                <div
+                    role="status"
+                    className="mt-3 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2 text-xs text-warn"
+                >
+                    Missing, incomplete, or contradictory evidence — safety
+                    result is inconclusive.
+                </div>
+            )}
             <ul className="mt-3 flex flex-col gap-2">
                 {outcomeLines.map((line) => (
                     <li key={line} className="text-sm leading-snug text-ink">
@@ -106,7 +127,9 @@ function VerdictCard({
                             'font-mono text-xs font-semibold',
                             verification.operation_safe
                                 ? 'text-safe'
-                                : 'text-danger',
+                                : verification.safety_result === 'unsafe'
+                                  ? 'text-danger'
+                                  : 'text-ink',
                         )}
                     >
                         {verification.operation_safe ? 'true' : 'false'}

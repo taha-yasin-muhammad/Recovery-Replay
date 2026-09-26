@@ -12,18 +12,18 @@ target endpoint (validated on a separate Invoice app; see below).
 
 ## What this project is today
 
-| Capability | Status |
-| ---------- | ------ |
-| Two-attempt in-process replay (`ReplayRunner`) | Supported |
-| Persisted evidence evaluation (`PersistedEvidenceEvaluator`) | Supported |
-| Built-in Checkout and Reservation scenarios (vulnerable + protected) | Supported |
-| CLI: `php artisan replay:run` with JSON reports and exit codes | Supported |
-| Browser Investigation Workspace at `/demo` | Supported (`local` / `testing` only) |
-| Run History and saved comparisons | Supported (`local` / `testing` only) |
-| CI regression gate on protected scenarios | Supported |
-| Drop-in Composer package for arbitrary Laravel apps | **Not supported** |
-| Production, remote API, or real network-partition replay | **Not supported** |
-| Uninstrumented endpoints | Fail closed → `INCONCLUSIVE` |
+| Capability                                                           | Status                               |
+| -------------------------------------------------------------------- | ------------------------------------ |
+| Two-attempt in-process replay (`ReplayRunner`)                       | Supported                            |
+| Persisted evidence evaluation (`PersistedEvidenceEvaluator`)         | Supported                            |
+| Built-in Checkout and Reservation scenarios (vulnerable + protected) | Supported                            |
+| CLI: `php artisan replay:run` with JSON reports and exit codes       | Supported                            |
+| Browser Investigation Workspace at `/demo`                           | Supported (`local` / `testing` only) |
+| Run History and saved comparisons                                    | Supported (`local` / `testing` only) |
+| CI regression gate on protected scenarios                            | Supported                            |
+| Drop-in Composer package for arbitrary Laravel apps                  | **Not supported**                    |
+| Production, remote API, or real network-partition replay             | **Not supported**                    |
+| Uninstrumented endpoints                                             | Fail closed → `INCONCLUSIVE`         |
 
 ---
 
@@ -141,11 +141,11 @@ If evidence is missing or incomplete, the runner fails closed:
 `true` when reproduction succeeded **and** both attempts share the same
 persisted `resource_id`.
 
-| `reproduction_succeeded` | `operation_safe` | Meaning |
-| ------------------------ | ---------------- | ------- |
-| `false` | `false` | Incomplete / missing evidence — inconclusive |
-| `true` | `false` | Replay succeeded — **duplicate created** |
-| `true` | `true` | Replay succeeded — idempotency held |
+| `reproduction_succeeded` | `operation_safe` | Meaning                                      |
+| ------------------------ | ---------------- | -------------------------------------------- |
+| `false`                  | `false`          | Incomplete / missing evidence — inconclusive |
+| `true`                   | `false`          | Replay succeeded — **duplicate created**     |
+| `true`                   | `true`           | Replay succeeded — idempotency held          |
 
 Vulnerable scenarios are expected to exit `1`. Protected scenarios should
 exit `0`. CI gates only the protected pair.
@@ -240,9 +240,10 @@ Submission checklist and gaps:
 **Instrumented endpoints only.** In-process kernel dispatch. Uninstrumented
 paths → `INCONCLUSIVE`.
 
-**Simulated post-commit failure.** Controllers honour `inject_fault` after
-persist. This models “persisted but not acknowledged” without a real network
-partition or proxy.
+**Simulated post-persist failure.** Controllers honour `inject_fault` after
+persist and return a simulated HTTP 503 that prompts a client retry. This is
+not a lost or unacknowledged response, real network disconnect, partition, or
+proxy-injected fault.
 
 **SQLite / in-process only.** Not a load test, connection-pool test, or
 multi-node concurrency harness.

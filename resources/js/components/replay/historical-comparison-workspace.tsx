@@ -57,10 +57,18 @@ function ComparisonSide({
                     >
                         {isVulnerable ? 'Before' : 'After'}
                     </span>
-                    <span className="text-xs text-ink-faint">
-                        {isVulnerable
-                            ? 'No idempotency'
-                            : 'Idempotency protected'}
+                    <span
+                        className={cn(
+                            'rounded-md px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide uppercase',
+                            summary.safety_result === 'safe' &&
+                                'bg-safe-soft text-safe',
+                            summary.safety_result === 'unsafe' &&
+                                'bg-danger-soft text-danger',
+                            summary.safety_result === 'inconclusive' &&
+                                'bg-warn-soft text-warn',
+                        )}
+                    >
+                        {summary.safety_result}
                     </span>
                 </div>
                 <h2 className="text-sm font-semibold text-ink">{label}</h2>

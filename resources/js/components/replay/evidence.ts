@@ -116,6 +116,7 @@ export function deriveVerification(attempts: ReplayAttempt[]): Verification {
             duplicate_resources: false,
             same_resource_on_retry: false,
             resource_ids: [],
+            safety_result: 'inconclusive',
         };
     }
 
@@ -134,13 +135,26 @@ export function deriveVerification(attempts: ReplayAttempt[]): Verification {
     const reproductionSucceeded =
         first.http_status === 503 &&
         (second.http_status === 200 || second.http_status === 201);
+    const operationSafe = reproductionSucceeded && sameResourceOnRetry;
+
+    // Same match order as PersistedEvidenceEvaluator::evaluateCompletePair.
+    let safetyResult: Verification['safety_result'] = 'inconclusive';
+
+    if (!reproductionSucceeded) {
+        safetyResult = 'inconclusive';
+    } else if (operationSafe) {
+        safetyResult = 'safe';
+    } else if (duplicateResources) {
+        safetyResult = 'unsafe';
+    }
 
     return {
         reproduction_succeeded: reproductionSucceeded,
-        operation_safe: reproductionSucceeded && sameResourceOnRetry,
+        operation_safe: operationSafe,
         duplicate_resources: duplicateResources,
         same_resource_on_retry: sameResourceOnRetry,
         resource_ids: resourceIds,
+        safety_result: safetyResult,
     };
 }
 

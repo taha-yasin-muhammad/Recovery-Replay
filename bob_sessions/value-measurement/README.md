@@ -2,10 +2,10 @@
 
 Copied from the 2026-09-26 controlled experiment (commit `62642f4`).
 
-| File | Description |
-| ---- | ----------- |
+| File          | Description                 |
+| ------------- | --------------------------- |
 | `results.csv` | Pilot + measured trial rows |
-| `log.txt` | Timestamped run log |
+| `log.txt`     | Timestamped run log         |
 
 Narrative protocol, aggregates, and limitations:
 [`docs/MEASUREMENT.md`](../../docs/MEASUREMENT.md).

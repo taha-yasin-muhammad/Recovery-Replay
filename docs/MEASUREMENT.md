@@ -26,11 +26,11 @@ operation:
 
 ## Methods compared
 
-| | A. Manual | B. Tool (`replay:run`) |
-| --- | --- | --- |
-| Procedure | Two HTTP POSTs via `curl` + Eloquent query of `orders` | `php artisan replay:run checkout --mode=… --json` |
-| Verdict | Derived by investigator from statuses + order IDs | Taken from generated JSON (`operation_safe`, `verdict`, attempt rows) |
-| Not used | CLI replay, `/demo` UI, Run History | Manual re-inference of safety after reading JSON |
+|           | A. Manual                                              | B. Tool (`replay:run`)                                                |
+| --------- | ------------------------------------------------------ | --------------------------------------------------------------------- |
+| Procedure | Two HTTP POSTs via `curl` + Eloquent query of `orders` | `php artisan replay:run checkout --mode=… --json`                     |
+| Verdict   | Derived by investigator from statuses + order IDs      | Taken from generated JSON (`operation_safe`, `verdict`, attempt rows) |
+| Not used  | CLI replay, `/demo` UI, Run History                    | Manual re-inference of safety after reading JSON                      |
 
 Shared conditions:
 
@@ -43,10 +43,10 @@ Shared conditions:
 
 ### Action rubric (fixed)
 
-| Method | Count | Actions |
-| ------ | ----- | ------- |
-| Manual | 6 | send attempt 1 · record status · send retry · record status · query persisted IDs · conclude safe/duplicate |
-| Tool | 2 | run `replay:run` · read generated report fields / verdict |
+| Method | Count | Actions                                                                                                     |
+| ------ | ----- | ----------------------------------------------------------------------------------------------------------- |
+| Manual | 6     | send attempt 1 · record status · send retry · record status · query persisted IDs · conclude safe/duplicate |
+| Tool   | 2     | run `replay:run` · read generated report fields / verdict                                                   |
 
 ---
 
@@ -62,10 +62,10 @@ Shared conditions:
 
 ### Setup effort (excluded from investigation averages)
 
-| Step | Measured |
-| ---- | -------- |
-| Create disposable SQLite + `migrate` | 1520 ms |
-| Health check `GET /up` | 265 ms |
+| Step                                            | Measured                           |
+| ----------------------------------------------- | ---------------------------------- |
+| Create disposable SQLite + `migrate`            | 1520 ms                            |
+| Health check `GET /up`                          | 265 ms                             |
 | App instrumentation (`inject_fault`, endpoints) | Pre-existing — shared prerequisite |
 
 ---
@@ -74,38 +74,38 @@ Shared conditions:
 
 ### Pilot (not in averages)
 
-| Method | Mode | Status 1/2 | Resource IDs | Dup | Safe | ms | Actions | Correct |
-| ------ | ---- | ---------- | ------------ | --- | ---- | -- | ------- | ------- |
-| Manual | vulnerable | 503 / 201 | 3, 4 | yes | no | 1056 | 6 | yes |
-| Tool | vulnerable | 503 / 201 | 5, 6 | yes | no | 550 | 2 | yes (exit 1) |
+| Method | Mode       | Status 1/2 | Resource IDs | Dup | Safe | ms   | Actions | Correct      |
+| ------ | ---------- | ---------- | ------------ | --- | ---- | ---- | ------- | ------------ |
+| Manual | vulnerable | 503 / 201  | 3, 4         | yes | no   | 1056 | 6       | yes          |
+| Tool   | vulnerable | 503 / 201  | 5, 6         | yes | no   | 550  | 2       | yes (exit 1) |
 
 ### Measured trials (n = 3 per method × mode)
 
-| Trial | Order | Method | Mode | HTTP 1→2 | Resource IDs | Dup | Safe | ms | Actions | Correct |
-| ----- | ----- | ------ | ---- | -------- | ------------ | --- | ---- | -- | ------- | ------- |
-| V1 | M→T | Manual | vulnerable | 503→201 | 7, 8 | yes | no | 999 | 6 | yes |
-| V1 | M→T | Tool | vulnerable | 503→201 | 9, 10 | yes | no | 693 | 2 | yes |
-| V2 | T→M | Tool | vulnerable | 503→201 | 11, 12 | yes | no | 536 | 2 | yes |
-| V2 | T→M | Manual | vulnerable | 503→201 | 13, 14 | yes | no | 1072 | 6 | yes |
-| V3 | M→T | Manual | vulnerable | 503→201 | 15, 16 | yes | no | 1022 | 6 | yes |
-| V3 | M→T | Tool | vulnerable | 503→201 | 17, 18 | yes | no | 529 | 2 | yes |
-| P1 | T→M | Tool | protected | 503→200 | 19 | no | yes | 579 | 2 | yes |
-| P1 | T→M | Manual | protected | 503→200 | 20 | no | yes | 1013 | 6 | yes |
-| P2 | M→T | Manual | protected | 503→200 | 21 | no | yes | 999 | 6 | yes |
-| P2 | M→T | Tool | protected | 503→200 | 22 | no | yes | 557 | 2 | yes |
-| P3 | T→M | Tool | protected | 503→200 | 23 | no | yes | 525 | 2 | yes |
-| P3 | T→M | Manual | protected | 503→200 | 24 | no | yes | 1004 | 6 | yes |
+| Trial | Order | Method | Mode       | HTTP 1→2 | Resource IDs | Dup | Safe | ms   | Actions | Correct |
+| ----- | ----- | ------ | ---------- | -------- | ------------ | --- | ---- | ---- | ------- | ------- |
+| V1    | M→T   | Manual | vulnerable | 503→201  | 7, 8         | yes | no   | 999  | 6       | yes     |
+| V1    | M→T   | Tool   | vulnerable | 503→201  | 9, 10        | yes | no   | 693  | 2       | yes     |
+| V2    | T→M   | Tool   | vulnerable | 503→201  | 11, 12       | yes | no   | 536  | 2       | yes     |
+| V2    | T→M   | Manual | vulnerable | 503→201  | 13, 14       | yes | no   | 1072 | 6       | yes     |
+| V3    | M→T   | Manual | vulnerable | 503→201  | 15, 16       | yes | no   | 1022 | 6       | yes     |
+| V3    | M→T   | Tool   | vulnerable | 503→201  | 17, 18       | yes | no   | 529  | 2       | yes     |
+| P1    | T→M   | Tool   | protected  | 503→200  | 19           | no  | yes  | 579  | 2       | yes     |
+| P1    | T→M   | Manual | protected  | 503→200  | 20           | no  | yes  | 1013 | 6       | yes     |
+| P2    | M→T   | Manual | protected  | 503→200  | 21           | no  | yes  | 999  | 6       | yes     |
+| P2    | M→T   | Tool   | protected  | 503→200  | 22           | no  | yes  | 557  | 2       | yes     |
+| P3    | T→M   | Tool   | protected  | 503→200  | 23           | no  | yes  | 525  | 2       | yes     |
+| P3    | T→M   | Manual | protected  | 503→200  | 24           | no  | yes  | 1004 | 6       | yes     |
 
 All **12** measured conclusions were correct. Expected 503→2xx sequence and IDs were present in every trial.
 
 ### Aggregates (measured only)
 
-| Method | Mode | Investigation ms (3 trials) | Average | Median | Actions |
-| ------ | ---- | --------------------------- | ------- | ------ | ------- |
-| Manual | vulnerable | 999 / 1072 / 1022 | **1031** | 1022 | 6 |
-| Tool | vulnerable | 693 / 536 / 529 | **586** | 536 | 2 |
-| Manual | protected | 1013 / 999 / 1004 | **1005** | 1004 | 6 |
-| Tool | protected | 579 / 557 / 525 | **554** | 557 | 2 |
+| Method | Mode       | Investigation ms (3 trials) | Average  | Median | Actions |
+| ------ | ---------- | --------------------------- | -------- | ------ | ------- |
+| Manual | vulnerable | 999 / 1072 / 1022           | **1031** | 1022   | 6       |
+| Tool   | vulnerable | 693 / 536 / 529             | **586**  | 536    | 2       |
+| Manual | protected  | 1013 / 999 / 1004           | **1005** | 1004   | 6       |
+| Tool   | protected  | 579 / 557 / 525             | **554**  | 557    | 2       |
 
 Under this scripted procedure, tool wall-clock was about **0.55×** manual
 (~1.8× faster) with **2 vs 6** prescribed actions.
