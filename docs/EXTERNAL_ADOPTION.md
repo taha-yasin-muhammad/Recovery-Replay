@@ -3,49 +3,51 @@
 Recovery Replay is **not** an installable Composer package. The only
 integration path that has been run end-to-end is: copy a small PHP core into
 another Laravel application, add a compatible `replay_attempts` schema,
-instrument one create-style endpoint, add a scenario, and register
+instrument one create-style endpoint, add scenarios, and register
 `replay:run`.
 
-That path was validated on a separate minimal Invoice application
-(disposable; not vendored in this repository). Evidence summary:
+That path was validated twice on a separate minimal Invoice application
+(disposable; **not** vendored in this repository). Evidence summary:
 [`bob_sessions/external-adoption/SUMMARY.md`](../bob_sessions/external-adoption/SUMMARY.md).
 
 Baseline for this guide: Recovery Replay commit **`a985e9c`** (tests,
 recovery-replay regression, and Playwright E2E green on GitHub Actions).
-The Invoice spike itself was executed against an earlier green commit
-(`62642f4`); `ReplayRunner` / `PersistedEvidenceEvaluator` behaviour used by
-the spike is unchanged through `a985e9c` (comment-only wording on
-`ReplayRunner` in between).
+`ReplayRunner` / `PersistedEvidenceEvaluator` must remain **byte-identical**
+copies — do not edit them for domain specifics.
 
 ---
 
 ## What was tested vs what was not
 
-| Claim                                                                                                                    | Status                     |
-| ------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
-| Domain-generic core works on an Invoice create operation without modifying `ReplayRunner` / `PersistedEvidenceEvaluator` | **Tested** (Invoice spike) |
-| Copy + endpoint instrumentation + scenario + CLI map is a viable adoption path                                           | **Tested**                 |
-| Fresh minimal Laravel app with a dedicated SQLite database                                                               | **Tested**                 |
-| Drop-in Composer / Packagist package                                                                                     | **Not supported**          |
-| Zero-configuration adoption                                                                                              | **Not supported**          |
-| Brownfield app with real Invoice domain complexity                                                                       | **Unverified**             |
-| Remote HTTP / separate process without shared in-process kernel + DB                                                     | **Unverified**             |
-| Production or non-`local`/`testing` use                                                                                  | **Unsupported**            |
-| Porting `/demo`, run history, or comparison UI                                                                           | **Unverified**             |
+| Claim                                                                                                                    | Status                    |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| Domain-generic core works on an Invoice create operation without modifying `ReplayRunner` / `PersistedEvidenceEvaluator` | **Tested** (Invoice apps) |
+| Copy + endpoint instrumentation + scenario + CLI map is a viable adoption path                                           | **Tested**                |
+| Fresh minimal Laravel app with a dedicated SQLite database                                                               | **Tested**                |
+| Drop-in Composer / Packagist package                                                                                     | **Not supported**         |
+| Zero-configuration adoption                                                                                              | **Not supported**         |
+| Brownfield app with real Invoice domain complexity                                                                       | **Unverified**            |
+| Remote HTTP / separate process without shared in-process kernel + DB                                                     | **Unverified**            |
+| Production or non-`local`/`testing` use                                                                                  | **Unsupported**           |
+| Porting `/demo`, run history, or comparison UI                                                                           | **Unverified**            |
 
-Use this document for the smallest **tested** procedure. Do not treat the spike
-as proof that arbitrary brownfield or production apps integrate the same way.
+Use this document for the smallest **tested** procedure. Do not treat the
+external Invoice apps as proof that arbitrary brownfield or production apps
+integrate the same way.
 
 ---
 
-## Prerequisites (target application)
+## Prerequisites
 
-- Laravel application on PHP 8.3 (spike used a standard Laravel app skeleton).
-- `APP_ENV=local` or `APP_ENV=testing` (demo routes and `replay:run` refuse other environments).
-- A **dedicated** database for the target app’s local/testing work (spike used its
-  own disposable SQLite file — **not** Recovery Replay’s database).
+- PHP **8.3** and Composer.
+- A Laravel application (fresh or existing — see step 0).
+- `APP_ENV=local` or `APP_ENV=testing` (instrumented routes and `replay:run`
+  refuse other environments).
+- A **dedicated** database for the target app’s local/testing work (validated
+  apps used their own `database/database.sqlite` — **not** Recovery Replay’s
+  database).
 - One create-style business operation you can call twice with the same logical
-  `operation_id` (spike: create Invoice).
+  `operation_id` (validated example: create Invoice).
 
 You do **not** need Recovery Replay’s React UI, Inertia pages, comparison APIs,
 or Checkout/Reservation domain models.
@@ -54,80 +56,41 @@ or Checkout/Reservation domain models.
 
 ## File classification
 
-### Copy unchanged (domain-generic core)
+### Copy unchanged (exactly these five files)
 
-Copy these files from Recovery Replay into the same relative paths under the
-target app. Keep namespaces `App\…`. Do not edit them for domain specifics.
+Copy from Recovery Replay into the **same relative paths** under the target
+app. Keep namespaces `App\…`. Do **not** edit them.
 
-| Source in this repo                                                                                       | Role                                    |
-| --------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| [`app/Replay/ReplayScenario.php`](../app/Replay/ReplayScenario.php)                                       | Scenario contract                       |
-| [`app/Replay/ReplayRunner.php`](../app/Replay/ReplayRunner.php)                                           | Two-attempt runner + fail-closed report |
-| [`app/Replay/PersistedEvidenceEvaluator.php`](../app/Replay/PersistedEvidenceEvaluator.php)               | Safety evaluation from persisted rows   |
-| [`app/Models/ReplayAttempt.php`](../app/Models/ReplayAttempt.php)                                         | Eloquent model for evidence rows        |
-| [`app/Http/Responses/SimulatedPersistenceFault.php`](../app/Http/Responses/SimulatedPersistenceFault.php) | Concise simulated post-persist HTTP 503 |
-
-In the Invoice spike, `ReplayRunner` and `PersistedEvidenceEvaluator` were
-**not** modified. Byte-identity was confirmed for the evaluator and supporting
-core files; any later comment-only drift on `ReplayRunner` is immaterial.
+| Source in this repo                                                                                       | Role                                                     |
+| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [`app/Replay/ReplayScenario.php`](../app/Replay/ReplayScenario.php)                                       | Scenario contract                                        |
+| [`app/Replay/ReplayRunner.php`](../app/Replay/ReplayRunner.php)                                           | Two-attempt runner + fail-closed report                  |
+| [`app/Replay/PersistedEvidenceEvaluator.php`](../app/Replay/PersistedEvidenceEvaluator.php)               | Safety evaluation from persisted rows                    |
+| [`app/Models/ReplayAttempt.php`](../app/Models/ReplayAttempt.php)                                         | Eloquent model for evidence rows (`$timestamps = false`) |
+| [`app/Http/Responses/SimulatedPersistenceFault.php`](../app/Http/Responses/SimulatedPersistenceFault.php) | Concise simulated post-persist HTTP 503                  |
 
 **Do not copy** for this minimal path: `ComparisonService`, `RunEvidenceSummary`,
 Checkout/Reservation controllers or scenarios, demo HTTP comparison routes, or
 frontend assets.
 
-### Adapt (app-specific wiring)
+### Adapt (target-app wiring — required)
 
-| Piece                                                                                       | How the spike adapted it                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `replay_attempts` schema                                                                    | One **consolidated** migration (see below). Recovery Replay’s split migrations (`create_replay_attempts_table` + `add_resource_identity_…`) are awkward to copy as-is.                                                                                      |
-| [`app/Console/Commands/ReplayRunCommand.php`](../app/Console/Commands/ReplayRunCommand.php) | Copy as a starting point; replace the `SCENARIOS` map and CLI `{scenario}` / `--mode` options with your domain (spike: `invoice` × `vulnerable` \| `protected` \| `uninstrumented`).                                                                        |
-| Scenario classes under `app/Replay/Scenarios/`                                              | New classes implementing `ReplayScenario`. Pattern: copy the in-process `dispatch()` helper from [`VulnerableCheckoutScenario`](../app/Replay/Scenarios/VulnerableCheckoutScenario.php), point it at your route, parse your resource id from the JSON body. |
-| HTTP route                                                                                  | Register the instrumented endpoint under `local`/`testing` only (spike: `POST /api/invoices` in `routes/api.php`).                                                                                                                                          |
-| Artisan discovery                                                                           | Placing the command in `app/Console/Commands/` was enough in the spike’s Laravel skeleton (no extra `console.php` registration). Confirm `php artisan list` shows `replay:run` in **your** app.                                                             |
+| Piece                                                                                       | What to do                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `replay_attempts` schema                                                                    | One **consolidated** migration (step 2). Do not copy Recovery Replay’s split migrations as-is.                                                                                                                                                                                                                                                  |
+| Business table + model                                                                      | Minimum Invoice schema/model in the [reference example](#reference-example-validated-invoice-app).                                                                                                                                                                                                                                              |
+| Instrumented HTTP handler                                                                   | One create endpoint (validated: single `POST /api/invoices`). Full code in the reference example — **not** shipped as a spike tree in this repo. In-repo contract stand-ins: [`CheckoutController`](../app/Http/Controllers/CheckoutController.php) / [`ProtectedCheckoutController`](../app/Http/Controllers/ProtectedCheckoutController.php). |
+| Route + API bootstrap                                                                       | Env-gated route; create `routes/api.php` and register it in `bootstrap/app.php` when absent (step 0 / 3).                                                                                                                                                                                                                                       |
+| [`app/Console/Commands/ReplayRunCommand.php`](../app/Console/Commands/ReplayRunCommand.php) | Copy as a **starting point**, then replace the `SCENARIOS` map for your domain (`invoice` × `vulnerable` \| `protected`). Create `app/Console/Commands/` if missing.                                                                                                                                                                            |
+| Scenario classes under `app/Replay/Scenarios/`                                              | New classes implementing `ReplayScenario`. Pattern: in-process `dispatch()` from [`VulnerableCheckoutScenario`](../app/Replay/Scenarios/VulnerableCheckoutScenario.php); protected key from [`ProtectedCheckoutScenario`](../app/Replay/Scenarios/ProtectedCheckoutScenario.php). Parse `invoice_id` from the JSON body.                        |
 
-### Required changes in the target business operation
+### Optional (test scaffolding only)
 
-Instrument the create handler itself (local/testing only). The spike’s
-`InvoiceController` is the reference shape; in this repo the same contract
-appears on Checkout/Reservation controllers such as
-[`CheckoutController`](../app/Http/Controllers/CheckoutController.php) and
-[`ProtectedCheckoutController`](../app/Http/Controllers/ProtectedCheckoutController.php).
-
-The handler must:
-
-1. Guard with `abort_unless(app()->environment('local', 'testing'), 403)` (or
-   equivalent route-level env gate).
-2. Accept request fields: `operation_id` (required), plus `run_id`,
-   `attempt_id`, and `inject_fault` for replay; for a protected path also
-   `idempotency_key` (or your chosen idempotency mechanism).
-3. Persist the business resource **first**.
-4. When `run_id` is present, write a `replay_attempts` row **before** returning,
-   including at least:
-    - `run_id`, `attempt_id`, `operation_id`
-    - `resource_type` (e.g. `invoice`), `resource_id` (persisted primary key)
-    - `http_status` equal to the status that will be returned
-    - `order_count_after` (legacy column name; spike stored the count of
-      resources for this `operation_id`)
-    - `attempted_at`
-    - `order_id` may be `null` for non-order resources
-5. When `inject_fault` is true, return `SimulatedPersistenceFault::json()`
-   (HTTP **503**) **after** persist + evidence write.
-6. Otherwise return success (`201` on create, `200` when an idempotent reuse
-   returns the existing resource).
-
-**Vulnerable path:** each attempt creates a new resource when no idempotency
-key is supplied → expected duplicate on retry.
-
-**Protected path:** same endpoint (or a protected variant) must reuse the
-resource when the same idempotency key is replayed → same `resource_id` on
-attempt 2. Minimum spike approach: unique `idempotency_key` column + lookup
-before create (see Checkout’s protected controller for the fuller pattern).
-
-**Uninstrumented / missing evidence:** same create + fault injection but
-**omit** `run_id` / evidence writes → runner fails closed as `INCONCLUSIVE`.
-
-Without steps 4–5 on an instrumented run, `ReplayRunner` cannot evaluate safety
-and returns `INCONCLUSIVE`.
+An **uninstrumented** scenario (omit `run_id` / `attempt_id`) is **not** a
+built-in Recovery Replay feature. This repository’s `replay:run` only ships
+`checkout` and `reservation` × `vulnerable` \| `protected`. Any
+`--mode=uninstrumented` wiring lives only in the external target app as
+optional scaffolding to demonstrate fail-closed `INCONCLUSIVE`.
 
 ---
 
@@ -136,14 +99,50 @@ and returns `INCONCLUSIVE`.
 Work in the **target** application directory (not inside Recovery Replay), with
 its own `.env` and database.
 
-### 1. Copy the unchanged core
+### 0. Obtain a target Laravel app
 
-Copy the five files listed above into matching paths.
+**Fresh app** (what the validation used):
 
-### 2. Add a consolidated `replay_attempts` migration
+```bash
+composer create-project laravel/laravel invoice-adoption-validation --prefer-dist --no-interaction
+cd invoice-adoption-validation
+```
 
-Create a single migration equivalent to the spike schema (columns after both
-Recovery Replay migrations have been applied):
+Confirm `APP_ENV=local` (or `testing`) and that `DB_CONNECTION` points at **this**
+app’s database (default SQLite file `database/database.sqlite` is fine). Do not
+point at Recovery Replay’s database.
+
+**Existing Laravel app:** skip `create-project`. Still use a dedicated local /
+testing database and `APP_ENV=local` or `testing`. Expect extra brownfield
+work (auth, middleware, multi-table writes) — that path is **unverified**.
+
+**Skeleton gaps on a fresh Laravel 11+ / 13 app** (validated on Laravel 13):
+
+1. Create `app/Console/Commands/` if it does not exist — required before
+   copying `ReplayRunCommand.php`.
+2. Create `routes/api.php` if absent, and register it in `bootstrap/app.php`:
+
+```php
+->withRouting(
+    web: __DIR__.'/../routes/web.php',
+    api: __DIR__.'/../routes/api.php',
+    commands: __DIR__.'/../routes/console.php',
+    health: '/up',
+)
+```
+
+Laravel’s `api` registration mounts routes under the `/api` prefix, so
+`Route::post('/invoices', …)` becomes `POST /api/invoices`.
+
+### 1. Copy the five unchanged core files
+
+Copy the five files listed under [Copy unchanged](#copy-unchanged-exactly-these-five-files)
+into matching paths under the target app. Do not modify them.
+
+### 2. Add migrations and migrate
+
+**`replay_attempts`** (consolidated schema — match the copied `ReplayAttempt`
+model; do **not** add Laravel `$table->timestamps()`):
 
 ```php
 Schema::create('replay_attempts', function (Blueprint $table) {
@@ -161,17 +160,34 @@ Schema::create('replay_attempts', function (Blueprint $table) {
 });
 ```
 
-Also ensure your business table exists (spike: `invoices` with `operation_id`,
-nullable unique `idempotency_key`, `status`).
+**`invoices`** (minimum validated business table):
+
+```php
+Schema::create('invoices', function (Blueprint $table) {
+    $table->id();
+    $table->string('operation_id');
+    $table->string('idempotency_key')->nullable()->unique();
+    $table->string('status');
+    $table->timestamps();
+});
+```
 
 ```bash
 php artisan migrate --force
 ```
 
-### 3. Instrument the endpoint and register the route
+### 3. Instrument one endpoint and register the route
 
-Implement the contract in the previous section. Gate the route to
-`local`/`testing`, for example:
+**Validated arrangement:** a **single** test-only route,
+`POST /api/invoices`, that reuses one business create operation:
+
+| Client behaviour                           | Handler behaviour                                 | Expected on retry after 503 |
+| ------------------------------------------ | ------------------------------------------------- | --------------------------- |
+| No `idempotency_key`                       | Always create a new invoice                       | **Two** distinct invoices   |
+| Same `idempotency_key` on both attempts    | Lookup-or-create; reuse on match                  | **Same** `invoice_id`       |
+| Omit `run_id` (optional INCONCLUSIVE test) | Persist invoice; **skip** `replay_attempts` write | Fail-closed `INCONCLUSIVE`  |
+
+Gate the route to `local`/`testing` only, for example in `routes/api.php`:
 
 ```php
 if (app()->environment('local', 'testing')) {
@@ -179,32 +195,133 @@ if (app()->environment('local', 'testing')) {
 }
 ```
 
-(Mounted under the app’s `api` prefix as `POST /api/invoices` in the spike.)
+Also guard the handler with
+`abort_unless(app()->environment('local', 'testing'), 403)`.
 
-### 4. Add scenarios
+Implement the handler using the [reference example](#reference-example-validated-invoice-app)
+(or adapt the in-repo Checkout controllers to the same contract).
 
-- **Vulnerable:** in-process `POST` with `operation_id`, `run_id`, `attempt_id`,
-  `inject_fault` — no idempotency key.
-- **Protected:** same URI with a stable `idempotency_key` for both attempts
-  (generate once per scenario instance; see
-  [`ProtectedCheckoutScenario`](../app/Replay/Scenarios/ProtectedCheckoutScenario.php)).
-- **Optional uninstrumented:** same create without `run_id` / `attempt_id` to
-  demonstrate fail-closed `INCONCLUSIVE`.
+### 4. Add required scenarios and adapt `replay:run`
 
-Pattern source: [`VulnerableCheckoutScenario`](../app/Replay/Scenarios/VulnerableCheckoutScenario.php)
-(`Illuminate\Contracts\Http\Kernel` dispatch, not remote HTTP).
+#### 4a. Vulnerable scenario — `dispatch()` wiring
 
-### 5. Register the CLI map
+Create `app/Replay/Scenarios/VulnerableInvoiceScenario.php` implementing
+[`ReplayScenario`](../app/Replay/ReplayScenario.php). Copy the entire
+`dispatch()` protected method verbatim from
+[`VulnerableCheckoutScenario`](../app/Replay/Scenarios/VulnerableCheckoutScenario.php)
+(lines 41–85: the `SymfonyRequest::create` → `Kernel::handle` → `terminate`
+block, plus the private `responseBody()` helper).
 
-Adapt `ReplayRunCommand`’s `SCENARIOS` constant so your scenario classes are
-reachable, then confirm:
+Two adaptations are required in `attempt()` and `dispatch()`:
+
+1. **URI** — pass `'/api/invoices'` instead of `'/api/checkout'`.
+2. **Resource id field** — the Checkout source reads `$body['order_id']`; read
+   `$body['invoice_id']` instead. Return `resource_type => 'invoice'` and
+   `order_id => null` (the column is legacy and unused for invoices).
+
+`attempt()` sends exactly:
+
+```php
+return $this->dispatch('/api/invoices', [
+    'operation_id' => $operationId,
+    'run_id'       => $runId,
+    'attempt_id'   => $attemptId,
+    'inject_fault' => $injectFault,
+], $attemptId);
+```
+
+The `dispatch()` return array must satisfy the `AttemptPayload` shape from
+[`ReplayScenario`](../app/Replay/ReplayScenario.php):
+
+```php
+return [
+    'attempt_id'    => $attemptId,
+    'http_status'   => $response->getStatusCode(),
+    'resource_type' => 'invoice',
+    'resource_id'   => $invoiceId,   // parsed from $body['invoice_id'], or null
+    'order_id'      => null,
+    'response_body' => $body,
+];
+```
+
+#### 4b. Protected scenario — same key on both attempts
+
+Create `app/Replay/Scenarios/ProtectedInvoiceScenario.php` extending
+`VulnerableInvoiceScenario` (mirrors how
+[`ProtectedCheckoutScenario`](../app/Replay/Scenarios/ProtectedCheckoutScenario.php)
+extends `VulnerableCheckoutScenario`).
+
+Critical: the `idempotency_key` is generated **once** in `__construct()` and the
+**identical value** is sent on both attempt 1 and attempt 2. That shared key is
+what lets the handler return the same `invoice_id` on the retry:
+
+```php
+class ProtectedInvoiceScenario extends VulnerableInvoiceScenario
+{
+    private readonly string $idempotencyKey;
+
+    public function __construct()
+    {
+        $this->idempotencyKey = 'idem-'.Str::random(12);
+    }
+
+    public function attempt(string $runId, string $operationId, string $attemptId, bool $injectFault): array
+    {
+        return $this->dispatch('/api/invoices', [
+            'operation_id'    => $operationId,
+            'idempotency_key' => $this->idempotencyKey,  // same value both calls
+            'run_id'          => $runId,
+            'attempt_id'      => $attemptId,
+            'inject_fault'    => $injectFault,
+        ], $attemptId);
+    }
+}
+```
+
+Both `run_id` and `attempt_id` are passed on both attempts so that the handler
+writes a `replay_attempts` evidence row each time. `ReplayRunner` supplies a
+distinct `$attemptId` per call, so the two rows have unique `attempt_id` values
+but share the same `operation_id` and (because of idempotency) the same
+`resource_id`.
+
+#### 4c. Copy and adapt `ReplayRunCommand`
+
+**Copy destination:** `app/Console/Commands/ReplayRunCommand.php` in the target
+app. Create the `app/Console/Commands/` directory first if it does not exist
+(required on fresh Laravel 11+ / 13 skeletons — see step 0).
+
+Copy [`ReplayRunCommand.php`](../app/Console/Commands/ReplayRunCommand.php)
+unchanged, then make two edits:
+
+1. **Replace the `SCENARIOS` constant** — remove the `checkout` and
+   `reservation` entries and add your invoice classes:
+
+```php
+private const array SCENARIOS = [
+    'invoice' => [
+        'vulnerable' => VulnerableInvoiceScenario::class,
+        'protected'  => ProtectedInvoiceScenario::class,
+    ],
+];
+```
+
+2. **Update the `$signature` hint** (optional but avoids misleading help text) —
+   change `{scenario : Scenario name (checkout|reservation)}` to
+   `{scenario : Scenario name (invoice)}`.
+
+Everything else in the command (`handle()`, env guard, `--mode`, `--json`,
+`renderReport()`) is domain-generic and must be kept unchanged. Artisan
+auto-discovers commands in `app/Console/Commands/` on the validated skeleton; no
+additional registration in `routes/console.php` is needed.
+
+Confirm registration:
 
 ```bash
 php artisan list
 # expect: replay:run
 ```
 
-### 6. Run and interpret results
+### 5. Run the required checks
 
 ```bash
 # Expect unsafe duplicate — exit 1
@@ -213,9 +330,6 @@ php artisan replay:run invoice --mode=vulnerable
 # Expect same resource on retry — exit 0
 php artisan replay:run invoice --mode=protected
 
-# Expect missing evidence — exit 1, INCONCLUSIVE
-php artisan replay:run invoice --mode=uninstrumented
-
 # Machine-readable report
 php artisan replay:run invoice --mode=protected --json
 ```
@@ -223,17 +337,71 @@ php artisan replay:run invoice --mode=protected --json
 Replace `invoice` with whatever name you registered. Exit code is driven only by
 `operation_safe` (`0` when true, `1` when false) — including inconclusive runs.
 
+### 6. Optional — verify fail-closed INCONCLUSIVE
+
+This step is **optional test scaffolding**. It is **not** part of Recovery
+Replay’s built-in CLI surface.
+
+How the runner fails closed: when a run produces **no** `replay_attempts` rows
+for its `run_id`, `ReplayRunner` returns
+`verdict: INCONCLUSIVE — no evidence recorded for this run`,
+`reproduction_succeeded: false`, `operation_safe: false`, exit **1**.
+
+How the validated Invoice app demonstrated that: the same `POST /api/invoices`
+handler already skips evidence when `run_id` is absent. An optional scenario
+class posted `operation_id` + `inject_fault` only (no `run_id` / `attempt_id`)
+and the target app’s adapted `ReplayRunCommand` mapped an optional
+`--mode=uninstrumented` to that class. You may instead call the endpoint twice
+without `run_id` and inspect that no evidence rows exist — do not treat
+`uninstrumented` as a Recovery Replay product feature.
+
+---
+
+## Request and response contract (validated Invoice)
+
+**Request** (`POST /api/invoices`, JSON):
+
+| Field             | Required                  | Role                                                   |
+| ----------------- | ------------------------- | ------------------------------------------------------ |
+| `operation_id`    | yes                       | Logical operation identity shared across both attempts |
+| `run_id`          | for instrumented replay   | When present, handler writes a `replay_attempts` row   |
+| `attempt_id`      | recommended with `run_id` | Stable attempt identity for the evidence row           |
+| `inject_fault`    | replay attempts           | After persist (+ evidence), return HTTP **503**        |
+| `idempotency_key` | protected path only       | When non-empty, lookup-or-create; reuse on retry       |
+
+**Response** (success / reuse):
+
+| HTTP  | Body                                                                               |
+| ----- | ---------------------------------------------------------------------------------- |
+| `201` | `{"invoice_id": <int>, "status": "<string>"}` — new invoice                        |
+| `200` | `{"invoice_id": <int>, "status": "<string>"}` — idempotent reuse                   |
+| `503` | `SimulatedPersistenceFault::json()` — after persist (+ evidence when `run_id` set) |
+| `409` | Idempotency key bound to a different `operation_id`                                |
+
+Scenarios must read **`invoice_id`** (not `order_id`) when parsing the resource
+id from the live response body. Safety evaluation still uses **persisted**
+`replay_attempts.resource_id`, not the live body.
+
+**Evidence row** (when `run_id` is present), written **before** the HTTP return:
+
+- `run_id`, `attempt_id`, `operation_id`
+- `resource_type` = `invoice`, `resource_id` = invoice primary key
+- `http_status` equal to the status that will be returned (`503`, `201`, or `200`)
+- `order_count_after` = count of invoices for this `operation_id` (legacy column name)
+- `attempted_at` = now
+- `order_id` = `null`
+
 ---
 
 ## Expected results and exit codes
 
-| Mode                              | Attempt 1           | Attempt 2           | Distinct `resource_id`s | `reproduction_succeeded` | `operation_safe` | Typical verdict         | Exit  |
-| --------------------------------- | ------------------- | ------------------- | ----------------------- | ------------------------ | ---------------- | ----------------------- | ----- |
-| Vulnerable                        | `503` after persist | `201` new resource  | 2                       | `true`                   | `false`          | Unsafe / duplicate      | **1** |
-| Protected                         | `503` after persist | `200` same resource | 1                       | `true`                   | `true`           | Pass — idempotency held | **0** |
-| Uninstrumented / missing evidence | (may still 503/201) | …                   | n/a                     | `false`                  | `false`          | `INCONCLUSIVE — …`      | **1** |
+| Mode (target-app)         | Attempt 1           | Attempt 2           | Distinct `resource_id`s | `reproduction_succeeded` | `operation_safe` | Typical verdict         | Exit  |
+| ------------------------- | ------------------- | ------------------- | ----------------------- | ------------------------ | ---------------- | ----------------------- | ----- |
+| Vulnerable                | `503` after persist | `201` new resource  | 2                       | `true`                   | `false`          | Unsafe / duplicate      | **1** |
+| Protected                 | `503` after persist | `200` same resource | 1                       | `true`                   | `true`           | Pass — idempotency held | **0** |
+| Optional missing evidence | (may still 503/201) | …                   | n/a                     | `false`                  | `false`          | `INCONCLUSIVE — …`      | **1** |
 
-Invoice spike numbers (illustrative of shape, not guaranteed ids):
+Illustrative ids from a validation run (shape only; ids are not guaranteed):
 
 - Vulnerable: attempt 1 → `503` / id `1`; attempt 2 → `201` / id `2`; exit **1**
 - Missing evidence: no `ReplayAttempt` rows; verdict
@@ -274,13 +442,216 @@ and DB. Remote API replay without that shared process + schema is unverified.
 
 ---
 
+## Reference example (validated Invoice app)
+
+The disposable validation app is **not** checked into this repository. The
+snippets below are the **minimum** shape that completed the second validation.
+Prefer adapting these (or the in-repo Checkout controllers) rather than looking
+for an `InvoiceController` inside Recovery Replay — it is not shipped here.
+
+### Invoice model
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Invoice extends Model
+{
+    protected $fillable = [
+        'operation_id',
+        'idempotency_key',
+        'status',
+    ];
+}
+```
+
+### Route (`routes/api.php`)
+
+```php
+use App\Http\Controllers\InvoiceController;
+use Illuminate\Support\Facades\Route;
+
+if (app()->environment('local', 'testing')) {
+    Route::post('/invoices', [InvoiceController::class, 'store']);
+}
+```
+
+### Instrumented handler (`InvoiceController`)
+
+Validated single-endpoint create (vulnerable when no key; protected when
+`idempotency_key` is present). Same business operation for both modes.
+
+```php
+namespace App\Http\Controllers;
+
+use App\Http\Responses\SimulatedPersistenceFault;
+use App\Models\Invoice;
+use App\Models\ReplayAttempt;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+
+class InvoiceController extends Controller
+{
+    public function store(Request $request): JsonResponse
+    {
+        abort_unless(app()->environment('local', 'testing'), 403);
+
+        $request->validate([
+            'operation_id' => ['required', 'string'],
+            'idempotency_key' => ['nullable', 'string'],
+        ]);
+
+        $operationId = $request->input('operation_id');
+        $idempotencyKey = $request->input('idempotency_key');
+
+        if (is_string($idempotencyKey) && $idempotencyKey !== '') {
+            return $this->storeProtected($request, $operationId, $idempotencyKey);
+        }
+
+        $invoice = Invoice::create([
+            'operation_id' => $operationId,
+            'status' => 'pending',
+        ]);
+
+        $injectFault = $request->boolean('inject_fault');
+        $httpStatus = $injectFault ? 503 : 201;
+
+        $this->recordEvidence($request, $operationId, $invoice->id, $httpStatus);
+
+        if ($injectFault) {
+            return SimulatedPersistenceFault::json();
+        }
+
+        return response()->json(['invoice_id' => $invoice->id, 'status' => $invoice->status], 201);
+    }
+
+    private function storeProtected(Request $request, string $operationId, string $idempotencyKey): JsonResponse
+    {
+        $existing = Invoice::where('idempotency_key', $idempotencyKey)->first();
+
+        if ($existing !== null) {
+            if ($existing->operation_id !== $operationId) {
+                return response()->json([
+                    'message' => 'This idempotency key was used for a different operation.',
+                ], 409);
+            }
+
+            $httpStatus = 200;
+            $this->recordEvidence($request, $operationId, $existing->id, $httpStatus);
+
+            return response()->json(['invoice_id' => $existing->id, 'status' => $existing->status], 200);
+        }
+
+        try {
+            $invoice = Invoice::create([
+                'operation_id' => $operationId,
+                'idempotency_key' => $idempotencyKey,
+                'status' => 'pending',
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            $invoice = Invoice::where('idempotency_key', $idempotencyKey)->firstOrFail();
+
+            if ($invoice->operation_id !== $operationId) {
+                return response()->json([
+                    'message' => 'This idempotency key was used for a different operation.',
+                ], 409);
+            }
+
+            $httpStatus = 200;
+            $this->recordEvidence($request, $operationId, $invoice->id, $httpStatus);
+
+            return response()->json(['invoice_id' => $invoice->id, 'status' => $invoice->status], 200);
+        }
+
+        $injectFault = $request->boolean('inject_fault');
+        $httpStatus = $injectFault ? 503 : 201;
+
+        $this->recordEvidence($request, $operationId, $invoice->id, $httpStatus);
+
+        if ($injectFault) {
+            return SimulatedPersistenceFault::json();
+        }
+
+        return response()->json(['invoice_id' => $invoice->id, 'status' => $invoice->status], 201);
+    }
+
+    private function recordEvidence(Request $request, string $operationId, int $invoiceId, int $httpStatus): void
+    {
+        if (! $request->filled('run_id')) {
+            return;
+        }
+
+        $attemptId = $request->input('attempt_id') ?: (string) Str::uuid();
+
+        ReplayAttempt::create([
+            'run_id' => $request->input('run_id'),
+            'attempt_id' => $attemptId,
+            'operation_id' => $operationId,
+            'order_id' => null,
+            'resource_type' => 'invoice',
+            'resource_id' => $invoiceId,
+            'http_status' => $httpStatus,
+            'order_count_after' => Invoice::where('operation_id', $operationId)->count(),
+            'attempted_at' => now(),
+        ]);
+    }
+}
+```
+
+### Scenario payloads (in-process POST `/api/invoices`)
+
+```php
+// Vulnerable (required)
+[
+    'operation_id' => $operationId,
+    'run_id' => $runId,
+    'attempt_id' => $attemptId,
+    'inject_fault' => $injectFault,
+]
+
+// Protected (required) — same idempotency_key for both attempts
+[
+    'operation_id' => $operationId,
+    'idempotency_key' => $this->idempotencyKey,
+    'run_id' => $runId,
+    'attempt_id' => $attemptId,
+    'inject_fault' => $injectFault,
+]
+
+// Optional INCONCLUSIVE scaffolding — omit run_id / attempt_id
+[
+    'operation_id' => $operationId,
+    'inject_fault' => $injectFault,
+]
+```
+
+Parse `invoice_id` from the response body when building the scenario’s return
+array; set `resource_type` to `invoice` and `order_id` to `null`.
+
+### Target-app `SCENARIOS` map (adapted command)
+
+```php
+private const array SCENARIOS = [
+    'invoice' => [
+        'vulnerable' => VulnerableInvoiceScenario::class,
+        'protected' => ProtectedInvoiceScenario::class,
+        // Optional only — not a Recovery Replay built-in mode:
+        // 'uninstrumented' => UninstrumentedInvoiceScenario::class,
+    ],
+];
+```
+
+---
+
 ## Consistency notes for readers of this repo
 
 - Built-in Recovery Replay scenarios remain `checkout` and `reservation`
-  ([`ReplayRunCommand`](../app/Console/Commands/ReplayRunCommand.php)). The
-  `invoice` scenario exists only in the external spike.
-- This repository does **not** ship the spike application tree; only the summary
-  under `bob_sessions/external-adoption/` is checked in.
+  ([`ReplayRunCommand`](../app/Console/Commands/ReplayRunCommand.php)).
+- This repository does **not** ship the disposable Invoice application tree;
+  only the summary under `bob_sessions/external-adoption/` is checked in.
 - For product stance and demo workflow inside this app, see the root
   [`README.md`](../README.md).
 
@@ -288,8 +659,8 @@ and DB. Remote API replay without that shared process + schema is unverified.
 
 ## Integration steps that cannot yet be documented reliably
 
-These were **not** exercised by the Invoice spike (or are explicitly out of
-scope). Do not invent procedure detail for them:
+These were **not** exercised by the Invoice validations (or are explicitly out
+of scope). Do not invent procedure detail for them:
 
 1. Migrating a complex **brownfield** Invoice (or other) domain with existing
    middleware, auth, multi-table writes, queues, or external side effects.
@@ -299,6 +670,4 @@ scope). Do not invent procedure detail for them:
    real network-fault injection.
 4. Porting `/demo`, run history, saved comparisons, or frontend assets.
 5. Publishing or requiring a Composer package / SDK / middleware abstraction.
-6. Exact elapsed effort or checklist timing for a third-party app (spike setup
-   was ~5.1 minutes of scripted work on a fresh minimal app after prerequisites —
-   not a brownfield estimate).
+6. Exact elapsed effort or checklist timing for a third-party app.
