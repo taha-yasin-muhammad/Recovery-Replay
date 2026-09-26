@@ -41,3 +41,9 @@ yarn-error.log
 /boost.json
 /opencode.json
 /opencode.jsonc
+/database/e2e.sqlite
+/database/e2e.sqlite-journal
+/playwright-report/
+/test-results/
+/blob-report/
+/playwright/.cache/
