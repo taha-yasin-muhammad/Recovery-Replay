@@ -1,0 +1,15 @@
+trial,method,mode,order,status1,status2,resource_ids,duplicate,safe,repro,ms,actions,correct,evidence,exit_code,verdict
+pilot,manual,vulnerable,,503,201,3,4,True,False,True,1056,6,True,HTTP 503/201; orders.id=[3;4] op=op-man-v-pilot,,
+pilot,tool,vulnerable,,503,201,5,6,True,False,True,550,2,True,replay JSON run_id=0224a7c3-6f61-4cca-a8ea-df0fdbacfe2a,1,EXPECTED FAILURE — duplicate resources created (no idempotency protection)
+V1,manual,vulnerable,,503,201,7,8,True,False,True,999,6,True,HTTP 503/201; orders.id=[7;8] op=op-man-v-V1,,
+V1,tool,vulnerable,,503,201,9,10,True,False,True,693,2,True,replay JSON run_id=0806c062-e632-4b37-85ae-2c9853334b71,1,EXPECTED FAILURE — duplicate resources created (no idempotency protection)
+V2,tool,vulnerable,,503,201,11,12,True,False,True,536,2,True,replay JSON run_id=f6cf1390-e21a-4af2-9b67-18d9277e463a,1,EXPECTED FAILURE — duplicate resources created (no idempotency protection)
+V2,manual,vulnerable,,503,201,13,14,True,False,True,1072,6,True,HTTP 503/201; orders.id=[13;14] op=op-man-v-V2,,
+V3,manual,vulnerable,,503,201,15,16,True,False,True,1022,6,True,HTTP 503/201; orders.id=[15;16] op=op-man-v-V3,,
+V3,tool,vulnerable,,503,201,17,18,True,False,True,529,2,True,replay JSON run_id=a8f268db-9d7e-43c7-ad23-b12c280ce3d9,1,EXPECTED FAILURE — duplicate resources created (no idempotency protection)
+P1,tool,protected,,503,200,19,False,True,True,579,2,True,replay JSON run_id=8d1acc53-f803-4917-85d4-f9e2ab9b786c,0,PASS — retry returned the same resource (idempotency held)
+P1,manual,protected,,503,200,20,False,True,True,1013,6,True,HTTP 503/200; orders.id=[20] op=op-man-p-P1 key=idem-man-p-P1,,
+P2,manual,protected,,503,200,21,False,True,True,999,6,True,HTTP 503/200; orders.id=[21] op=op-man-p-P2 key=idem-man-p-P2,,
+P2,tool,protected,,503,200,22,False,True,True,557,2,True,replay JSON run_id=8099ba42-0fe1-41eb-ac34-72a314c6214b,0,PASS — retry returned the same resource (idempotency held)
+P3,tool,protected,,503,200,23,False,True,True,525,2,True,replay JSON run_id=8bd4442e-90b6-4466-9a06-39ee1178e13d,0,PASS — retry returned the same resource (idempotency held)
+P3,manual,protected,,503,200,24,False,True,True,1004,6,True,HTTP 503/200; orders.id=[24] op=op-man-p-P3 key=idem-man-p-P3,,

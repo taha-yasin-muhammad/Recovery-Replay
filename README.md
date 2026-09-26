@@ -1,246 +1,296 @@
 # Recovery Replay
 
-A demonstration tool for the IBM Bob 2.0 Hackathon that shows how to detect
-non-idempotent HTTP operations before they reach production — by replaying
-recorded API calls and comparing what the server did the first time against
-what it does on a retry.
+A local/testing Laravel demonstration tool for the IBM Bob 2.0 Hackathon.
+It reproduces a post-persist HTTP failure followed by a client retry, records
+persisted attempt evidence, and emits an `operation_safe` verdict.
+
+Recovery Replay is **this application**, not a drop-in Composer package.
+External reuse today means copying a small PHP core and instrumenting the
+target endpoint (validated on a separate Invoice app; see below).
 
 ---
 
-## The Problem
+## What this project is today
 
-In distributed systems, network failures happen after a server has already
-processed a request but before the response reaches the client. The client
-has no choice but to retry. If the endpoint is not idempotent, that retry
-creates a duplicate record — a second order, a double-charge, a ghost
-reservation — with no error visible to either side.
+| Capability | Status |
+| ---------- | ------ |
+| Two-attempt in-process replay (`ReplayRunner`) | Supported |
+| Persisted evidence evaluation (`PersistedEvidenceEvaluator`) | Supported |
+| Built-in Checkout and Reservation scenarios (vulnerable + protected) | Supported |
+| CLI: `php artisan replay:run` with JSON reports and exit codes | Supported |
+| Browser Investigation Workspace at `/demo` | Supported (`local` / `testing` only) |
+| Run History and saved comparisons | Supported (`local` / `testing` only) |
+| CI regression gate on protected scenarios | Supported |
+| Drop-in Composer package for arbitrary Laravel apps | **Not supported** |
+| Production, remote API, or real network-partition replay | **Not supported** |
+| Uninstrumented endpoints | Fail closed → `INCONCLUSIVE` |
 
-Recovery Replay surfaces this class of bug by:
+---
 
-1. Calling the same endpoint twice with the same payload (simulating a
-   client retry after a `503`).
-2. Comparing the resource IDs that each attempt produces.
-3. Emitting a structured `operation_safe` verdict that can gate a CI build.
+## The problem it demonstrates
 
-The tool does **not** require production traffic. It runs entirely in a
-`testing` environment against an in-memory SQLite database, with no external
-services.
+A server can persist a business effect and still return an error (or leave the
+client uncertain). The client retries. If the endpoint is not idempotent, the
+retry creates a duplicate — a second order, charge, reservation, or invoice —
+with no obvious error on either side.
+
+Recovery Replay surfaces that class of bug by:
+
+1. Calling the same logical operation twice (attempt 1 with simulated
+   post-persist `503`, attempt 2 as the retry).
+2. Reading persisted `replay_attempts` rows (not trusting live responses alone).
+3. Emitting `reproduction_succeeded` and `operation_safe` for CI or local review.
+
+It does **not** require production traffic. Fault injection is simulated inside
+instrumented controllers. Scenarios run against SQLite in `local` / `testing`.
+
+---
+
+## Requirements
+
+- PHP 8.3
+- Composer
+- Node 22
 
 ---
 
 ## Installation
 
-**Requirements:** PHP 8.3, Composer, Node 22.
-
 ```bash
-git clone https://github.com/your-org/recovery-replay.git
-cd recovery-replay
-composer setup          # installs deps, copies .env, runs migrations, builds assets
+git clone https://github.com/taha-yasin-muhammad/Recovery-Replay.git
+cd Recovery-Replay
+composer setup
 ```
 
-`composer setup` runs: `composer install`, `.env` copy, `php artisan key:generate`,
-`php artisan migrate`, `npm install`, and `npm run build`.
+`composer setup` runs: `composer install`, `.env` copy if missing,
+`php artisan key:generate`, `php artisan migrate --force`, `npm install`,
+and `npm run build`.
+
+Ensure `APP_ENV=local` (or `testing`) in `.env`. Demo routes, API endpoints,
+and `replay:run` refuse other environments.
 
 ---
 
-## Running the demo locally
+## Supported workflow
 
-Start the development server:
+### 1. Browser demo
 
 ```bash
 composer dev
 ```
 
-Then open `http://localhost:8000`. The demo page lets you run each scenario
-from the browser. To drive the same scenarios from the command line, use the
-Artisan commands below.
+Open **http://localhost:8000/demo** (not the home page — `/` is still the
+Laravel starter welcome screen).
 
----
+From `/demo` you can:
 
-## Artisan commands
+- Run Checkout or Reservation scenarios in vulnerable and protected modes
+- Inspect attempt evidence and the safety verdict
+- Save a comparison and open **http://localhost:8000/demo/history**
 
-All four combinations accept `--json` to write a machine-readable report
-instead of the formatted table.
+### 2. CLI replay
+
+All combinations accept `--json` for a machine-readable report.
 
 ```bash
-# Vulnerable checkout — creates a duplicate order on retry (exits 1)
+# Vulnerable checkout — duplicate order expected (exits 1)
 php artisan replay:run checkout --mode=vulnerable
 
-# Protected checkout — idempotency holds, one order, exits 0
+# Protected checkout — same order on retry (exits 0)
 php artisan replay:run checkout --mode=protected
 
-# Vulnerable reservation — creates a duplicate reservation on retry (exits 1)
+# Vulnerable reservation — duplicate expected (exits 1)
 php artisan replay:run reservation --mode=vulnerable
 
-# Protected reservation — idempotency holds, one reservation, exits 0
+# Protected reservation — same reservation on retry (exits 0)
 php artisan replay:run reservation --mode=protected
 ```
-
-Add `--json` to any command to get a parseable report on stdout:
 
 ```bash
 php artisan replay:run checkout --mode=protected --json
 ```
 
+`replay:run` may only run when `APP_ENV` is `local` or `testing`.
+
+### 3. Automated checks
+
+```bash
+composer ci:check   # frontend checks, Pint, PHPStan, Pest
+php artisan test --compact
+```
+
+See [Automated regression](#automated-regression-workflow) for the dedicated
+replay CI gate.
+
 ---
 
 ## Understanding the report fields
 
-Every run emits a report with two key boolean fields.
-
 ### `reproduction_succeeded`
 
-`true` when the two-attempt sequence played out as designed:
+`true` when the two-attempt sequence matched the designed failure mode:
 
-- Attempt 1 received a `503` (fault injected after the record was persisted).
-- Attempt 2 received a `200` or `201` (the retry completed normally).
+- Attempt 1 recorded HTTP `503` (fault after persist).
+- Attempt 2 recorded HTTP `200` or `201`.
 
-When `reproduction_succeeded` is `false`, the scenario did not run as
-intended and the result is labelled `INCONCLUSIVE`. This should never happen
-in normal usage — it indicates a misconfiguration or an environment problem.
+If evidence is missing or incomplete, the runner fails closed:
+`reproduction_succeeded = false`, verdict `INCONCLUSIVE`.
 
 ### `operation_safe`
 
-`true` when `reproduction_succeeded` is `true` **and** both attempts returned
-the same resource ID.
+`true` when reproduction succeeded **and** both attempts share the same
+persisted `resource_id`.
 
-| `reproduction_succeeded` | `operation_safe` | Meaning                                      |
-| ------------------------ | ---------------- | -------------------------------------------- |
-| `false`                  | `false`          | Replay did not run correctly — inconclusive  |
-| `true`                   | `false`          | Replay ran correctly — **duplicate created** |
-| `true`                   | `true`           | Replay ran correctly — idempotency held ✓    |
+| `reproduction_succeeded` | `operation_safe` | Meaning |
+| ------------------------ | ---------------- | ------- |
+| `false` | `false` | Incomplete / missing evidence — inconclusive |
+| `true` | `false` | Replay succeeded — **duplicate created** |
+| `true` | `true` | Replay succeeded — idempotency held |
 
-### Why the vulnerable scenario exits 1
-
-The `replay:run` command exits `1` whenever `operation_safe` is `false`.
-For the vulnerable scenario this is the **expected and intended** outcome —
-it proves the problem exists. The exit code is used in CI to fail a build
-when a _protected_ scenario unexpectedly degrades to non-idempotent
-behaviour.
+Vulnerable scenarios are expected to exit `1`. Protected scenarios should
+exit `0`. CI gates only the protected pair.
 
 ---
 
-## Adding a new ReplayScenario
+## Adding an instrumented Laravel scenario
 
-1. Create a class in `app/Replay/Scenarios/` that implements
-   [`ReplayScenario`](app/Replay/ReplayScenario.php):
+Scenarios only work for endpoints that participate in the evidence contract.
 
-    ```php
-    class ProtectedPaymentScenario implements ReplayScenario
-    {
-        public function label(): string
-        {
-            return 'payment (protected)';
-        }
+### Endpoint instrumentation (required)
 
-        public function attempt(
-            string $runId,
-            string $operationId,
-            string $attemptId,
-            bool $injectFault,
-        ): array {
-            return $this->dispatch('/api/payments/protected', [
-                'operation_id'    => $operationId,
-                'idempotency_key' => $this->idempotencyKey,
-                'run_id'          => $runId,
-                'attempt_id'      => $attemptId,
-                'inject_fault'    => $injectFault,
-            ], $attemptId);
-        }
-    }
-    ```
+The target handler (local/testing only) must:
 
-2. Register it in the `SCENARIOS` map inside
-   [`ReplayRunCommand`](app/Console/Commands/ReplayRunCommand.php):
+1. Accept `run_id`, `attempt_id`, and `inject_fault` (plus domain fields such as
+   `operation_id` / `idempotency_key`).
+2. Persist the business resource.
+3. Write a `replay_attempts` row when `run_id` is present, including
+   `resource_type`, `resource_id`, and the HTTP status that will be returned.
+4. When `inject_fault` is true, return the simulated post-persist `503`
+   (`SimulatedPersistenceFault`) **after** the write.
 
-    ```php
-    'payment' => [
-        'vulnerable' => VulnerablePaymentScenario::class,
-        'protected'  => ProtectedPaymentScenario::class,
-    ],
-    ```
+Without steps 3–4, `ReplayRunner` returns `INCONCLUSIVE`.
 
-3. The `ReplayRunner` needs no changes — it calls `attempt()` twice and
-   evaluates the evidence automatically.
+### Wire a new scenario in this app
 
-4. Add a feature test in `tests/Feature/` following the pattern in
+1. Implement [`ReplayScenario`](app/Replay/ReplayScenario.php) under
+   `app/Replay/Scenarios/` (see Checkout/Reservation scenarios for the
+   in-process `dispatch()` pattern).
+2. Register the class in the `SCENARIOS` map in
+   [`ReplayRunCommand`](app/Console/Commands/ReplayRunCommand.php).
+3. Add a feature test following
    [`ReplayRunCommandTest.php`](tests/Feature/ReplayRunCommandTest.php) or
    [`ReservationScenarioTest.php`](tests/Feature/ReservationScenarioTest.php).
+
+`ReplayRunner` and `PersistedEvidenceEvaluator` need no domain-specific edits
+when the evidence rows are complete.
+
+### Using the core in another Laravel app
+
+This is **not** `composer require …`. The verified path is:
+
+1. Copy the domain-generic PHP core (`ReplayScenario`, `ReplayRunner`,
+   `PersistedEvidenceEvaluator`, `ReplayAttempt`, `SimulatedPersistenceFault`)
+   and a compatible `replay_attempts` schema.
+2. Instrument your own endpoint as above.
+3. Add an app-specific scenario + CLI map.
+
+That path was validated on a separate Invoice application
+([`bob_sessions/external-adoption`](bob_sessions/external-adoption/SUMMARY.md)).
+
+---
+
+## What the evidence supports (and what it does not)
+
+### What Recovery Replay does in this repository
+
+- Reproduce vulnerable vs protected Checkout and Reservation flows locally
+- Persist attempt evidence and evaluate safety fail-closed
+- Expose CLI + `/demo` investigation UI under `local` / `testing`
+- Gate protected replays in GitHub Actions
+
+### What the external Invoice spike proved
+
+Documented in [`bob_sessions/external-adoption/SUMMARY.md`](bob_sessions/external-adoption/SUMMARY.md):
+
+- Separate Laravel Invoice app; `ReplayRunner` / `PersistedEvidenceEvaluator`
+  copied unchanged (byte-identical)
+- Vulnerable: post-persist `503`, duplicate invoices, unsafe
+- Missing evidence: `INCONCLUSIVE`
+- Protected: same invoice reused, safe
+- Integration required copy + instrumentation — **not** a Composer package
+
+### What remains unsupported or unverified
+
+- Production or non-`local|testing` use
+- Real network failures / remote HTTP without shared in-process kernel + DB
+- Drop-in packaging for arbitrary brownfield apps
+- Porting the demo UI into other applications
+- Human user studies (measurement was a scripted experiment)
+
+Controlled timing results (protocol, tables, limitations):
+[`docs/MEASUREMENT.md`](docs/MEASUREMENT.md).
+
+Submission checklist and gaps:
+[`docs/SUBMISSION.md`](docs/SUBMISSION.md).
 
 ---
 
 ## Current limitations
 
-**Instrumented endpoints only.** The replay runner dispatches HTTP requests
-in-process using Laravel's kernel. The endpoint must:
+**Instrumented endpoints only.** In-process kernel dispatch. Uninstrumented
+paths → `INCONCLUSIVE`.
 
-- Accept `run_id` and `attempt_id` fields in the request body.
-- Write a `replay_attempts` row when those fields are present.
-- Honour `inject_fault` to simulate the post-commit `503`.
+**Simulated post-commit failure.** Controllers honour `inject_fault` after
+persist. This models “persisted but not acknowledged” without a real network
+partition or proxy.
 
-Endpoints that do not implement this instrumentation will not produce evidence
-and the runner will return `INCONCLUSIVE`.
+**SQLite / in-process only.** Not a load test, connection-pool test, or
+multi-node concurrency harness.
 
-**Simulated post-commit HTTP failure.** The fault injection is implemented
-inside the controller by calling `abort(503)` after the database write. This
-accurately models the "persisted but not acknowledged" failure mode without
-requiring a real network partition or proxy.
+**Two attempts per run.** Retry storms are not modelled.
 
-**SQLite / in-process only.** The scenarios run inside the same PHP process
-as the test suite. They are not suitable for testing connection pooling,
-distributed locking, or multi-node concurrency. The tool is a regression
-detector, not a load tester.
-
-**Two attempts per run.** The runner always executes exactly two attempts:
-one with fault injection and one without. Multi-attempt retry storms are not
-modelled.
+**Environment lock.** Demo HTTP routes and `replay:run` are restricted to
+`local` and `testing`.
 
 ---
 
 ## Automated regression workflow
 
-The repository ships with two GitHub Actions workflows.
+### `tests.yml`
 
-### `tests.yml` — standard CI
+On push/PR to `main`: `composer setup` then `composer ci:check`.
 
-Runs on every push and pull request:
+### `replay-regression.yml`
 
-```bash
-composer ci:check   # TypeScript checks, Pint lint, PHPStan, Pest tests
-```
+On push/PR to `main`, with `APP_ENV=testing` and SQLite:
 
-### `replay-regression.yml` — recovery replay gate
+1. Migrate
+2. `php artisan test --compact`
+3. Protected checkout + reservation `replay:run --json`
+4. Assert `operation_safe = true` in both reports
+5. Upload `replay-reports` artifacts (including on failure)
 
-Also runs on every push and pull request. It:
+Vulnerable scenarios are covered by feature tests, not by the CI gate.
 
-1. Creates an SQLite database at `/tmp/replay-ci.sqlite`.
-2. Runs `php artisan migrate`.
-3. Runs the full Laravel test suite (`php artisan test --compact`).
-4. Executes the **protected checkout** replay and writes the JSON report.
-5. Executes the **protected reservation** replay and writes the JSON report.
-6. Verifies `operation_safe = true` in both reports; fails the build if not.
-7. Uploads both JSON reports as a `replay-reports` artifact — preserved even
-   when the build fails — so developers can inspect the evidence.
-
-The vulnerable scenarios are **not** run as CI gates. Their expected `exit 1`
-outcome is already asserted by the feature tests in `ReplayRunCommandTest.php`
-and `ReservationScenarioTest.php`.
-
-To reproduce the workflow locally:
+Reproduce locally (Unix-style paths; adjust for Windows):
 
 ```bash
-# Replicate what the workflow does (testing env, SQLite, no Node needed):
 export APP_ENV=testing
 export DB_CONNECTION=sqlite
 export DB_DATABASE=/tmp/replay-local.sqlite
 touch /tmp/replay-local.sqlite
 php artisan migrate --force
 php artisan test --compact
-php artisan replay:run checkout     --mode=protected --json > /tmp/replay-checkout.json
-php artisan replay:run reservation  --mode=protected --json > /tmp/replay-reservation.json
-cat /tmp/replay-checkout.json
-cat /tmp/replay-reservation.json
+php artisan replay:run checkout --mode=protected --json > /tmp/replay-checkout.json
+php artisan replay:run reservation --mode=protected --json > /tmp/replay-reservation.json
 ```
 
-Both commands must exit `0` and both JSON files must contain
-`"operation_safe": true` for the regression check to pass.
+Both commands must exit `0` with `"operation_safe": true`.
+
+---
+
+## Evidence folder
+
+See [`bob_sessions/`](bob_sessions/README.md) for copied measurement artifacts,
+the external-adoption summary, and an inventory of still-missing submission
+items (including demo video).
