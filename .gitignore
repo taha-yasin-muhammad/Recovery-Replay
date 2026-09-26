@@ -43,6 +43,7 @@ yarn-error.log
 /opencode.jsonc
 /database/e2e.sqlite
 /database/e2e.sqlite-journal
+/storage/investigation.sqlite
 /playwright-report/
 /test-results/
 /blob-report/
