@@ -3,15 +3,23 @@
 Hackathon evidence collected for Recovery Replay. Only verified artifacts
 are stored here. Missing items are listed explicitly.
 
-| Folder                                     | Contents                                        |
-| ------------------------------------------ | ----------------------------------------------- |
-| [`value-measurement/`](value-measurement/) | Controlled Checkout timing experiment CSV + log |
-| [`external-adoption/`](external-adoption/) | Summary of the separate Laravel Invoice spike   |
+| Folder                                     | Contents                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| [`value-measurement/`](value-measurement/) | Controlled Checkout timing experiment CSV + log                       |
+| [`external-adoption/`](external-adoption/) | Summary of the separate Laravel Invoice spike                         |
+| [`screenshots/`](screenshots/)             | Task session screenshots for the MVP Bob tasks listed below (13 PNGs) |
+
+Screenshot note: files under `screenshots/` are valid evidence of the named
+tasks. Some were captured later by reopening the original Bob task rather
+than during the original execution; where that applies, the task entry says
+so. These screenshots are not a slide deck.
 
 ## Missing (do not invent)
 
 - Demo video recording
-- Screenshots / slide deck
+- Slide deck
+- Original Bob-led Checkout investigation CLI JSON outputs (not preserved;
+  do not substitute `docs/investigation/earlier-cli-runs/`)
 - Full Invoice spike application tree (lived outside this repo at
   `D:\2026\invoice-replay-spike` during the experiment)
 
@@ -21,7 +29,6 @@ See also:
 - [`docs/MEASUREMENT.md`](../docs/MEASUREMENT.md)
 - [`docs/SUBMISSION.md`](../docs/SUBMISSION.md)
 - Root [`README.md`](../README.md)
-
 
 ### Evidence Correctness Fix — Fail-Closed Replay Verification
 
@@ -47,8 +54,6 @@ report resource reuse.
 **Validation:** `composer ci:check` and `npm run build` passed.
 The task completed with 90 passing tests and 373 assertions.
 
-
-
 ### Checkout Investigation — Evidence Preservation
 
 - **Task ID:** `baecb7cfdecdfccb4c537cf337ef044e`
@@ -65,7 +70,6 @@ a Git ignore rule to prevent the SQLite database from being committed.
 **Evidence scope:** This screenshot documents the later evidence-
 preservation task. It is not a screenshot of the original Bob-led
 Checkout investigation.
-
 
 ### Reservation Retry — Domain-Neutral Evidence
 
@@ -94,7 +98,6 @@ tests and preserved the existing Checkout test behavior.
 at that stage of development. The React interface was extended
 in subsequent tasks.
 
-
 ### Reusable Scenario Runner and Artisan CLI
 
 - **Task ID:** `d8dd41f2e528a6ceb35d1b6d710d237d`
@@ -117,7 +120,6 @@ and restricts replay execution to local/testing environments.
 **Scope:** This task established the reusable runner and CLI
 foundation. Evidence-completeness handling and CLI verdict
 correctness were strengthened in subsequent tasks.
-
 
 ### Initial Replay Timeline — Interactive Investigation UI
 
@@ -142,7 +144,6 @@ rather than relying exclusively on terminal output.
 demo. Idempotency protection, the Before/After investigation
 workspace, Reservation support, and historical comparisons were
 developed in subsequent tasks.
-
 
 ### Initial Checkout — Reproducing an Ambiguous Failure
 
@@ -170,7 +171,6 @@ scenario. Evidence recording, idempotency protection, the
 interactive UI, and the reusable ReplayRunner were developed
 in subsequent tasks.
 
-
 ### Checkout — Persistent Replay Evidence
 
 - **Task ID:** `920fd79326ff879c0c306dae42f570f1`
@@ -195,7 +195,6 @@ on hardcoded results.
 **Scope:** This task added backend evidence recording and retrieval.
 Idempotency protection, the interactive Replay Timeline, and the
 reusable ReplayRunner were developed in subsequent tasks.
-
 
 ### Protected Checkout — Idempotency Implementation
 
@@ -225,7 +224,6 @@ implementation. Additional safeguards for conflicting operation
 identities and evidence-completeness verification were strengthened
 in subsequent tasks.
 
-
 ### Checkout — Before/After Comparison UI
 
 - **Task ID:** `77393d346e16b568d7a6e2b81c67fe69`
@@ -252,7 +250,6 @@ frontend build completed successfully.
 **Scope:** This task established the initial Before/After Checkout
 interface. The Investigation Workspace, Reservation presentation,
 and historical comparison features were developed in later tasks.
-
 
 ### Replay Reliability Review — Verdicts and Idempotency Safety
 
@@ -282,7 +279,6 @@ legitimate retries, and the absence of unintended database writes.
 **Scope:** This screenshot documents the reliability review and
 idempotency-key conflict fix. The stricter persisted-evidence
 completeness checks were implemented in a subsequent task.
-
 
 ### Bob-Led Checkout Retry Investigation
 
@@ -319,7 +315,6 @@ investigation were not preserved.
 HTTP 503. It did not test a real network disconnection or
 distributed concurrency.
 
-
 ### Investigation Evidence — JSON Encoding and CI Fix
 
 - **Task ID:** `1e210efeefd7c948f14f8fd38489aa7b`
@@ -346,7 +341,6 @@ copies. No replay scenarios or application logic were changed.
 
 **Scope:** This task fixed evidence-file compatibility with CI.
 It did not reproduce or reinvestigate the Checkout defect.
-
 
 ### Final MVP Acceptance Review
 
